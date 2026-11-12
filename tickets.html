@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Tickets for Aleksandra Volenko — Unboxing Exhibition, 13 November 2026." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="https://use.typekit.net/hqn5mkz.css">
+    <title>Tickets — Aleksandra Volenko</title>
+    <style>
+      /* ------------------------------------------------------------------
+         Zelfde stijl als de homepage: Marion (hoofdletters) voor titels,
+         Helvetica voor tekst, wit + (heel licht) roze vlakken.
+         ------------------------------------------------------------------ */
+      :root {
+        --roze: #fde8e8;
+        --licht-roze: #fdf6f6;
+        --wit: #ffffff;
+        --tekst: #111111;
+        --zacht: #5a5050;
+        --lijn: #e6d3d3;
+        --marion: 'marion-standard', Georgia, serif;
+        --helvetica: Helvetica, Arial, sans-serif;
+        --rand: clamp(20px, 5vw, 80px);
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      body { margin: 0; background: var(--wit); color: var(--tekst); font-family: var(--helvetica); font-size: 18px; line-height: 1.6; }
+      h1, h2, h3 { font-family: var(--marion); font-weight: 400; text-transform: uppercase; letter-spacing: .02em; line-height: 1.1; margin: 0; }
+      a { color: inherit; }
+
+      /* Navigatie: identiek aan de andere pagina's */
+      nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; display: flex; justify-content: center; gap: 60px; padding: 8px 20px; background: var(--wit); transition: background-color .35s ease; }
+      nav a { text-decoration: none; color: #000; font-family: var(--marion); font-size: 24px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; transition: opacity .2s; }
+      nav a:hover { opacity: .6; }
+      nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px; }
+      @media (max-width: 768px) { nav { gap: 30px; padding: 8px 15px; } nav a { font-size: 16px; } }
+      @media (max-width: 480px) { nav { gap: 15px; padding: 8px 12px; } nav a { font-size: 14px; } }
+
+      section { padding: clamp(64px, 9vw, 120px) var(--rand); }
+      .binnen { max-width: 1200px; margin: 0 auto; }
+      .label { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--zacht); margin: 0 0 16px; }
+
+      /* Blokken verschijnen zacht bij het scrollen */
+      .verschijn { opacity: 0; transform: translateY(32px); transition: opacity .9s ease-out, transform 1.1s cubic-bezier(.22, 1, .36, 1); }
+      .verschijn.in-beeld { opacity: 1; transform: none; }
+      @media (prefers-reduced-motion: reduce) { .verschijn { opacity: 1; transform: none; transition: none; } }
+
+      /* 1. Hero: titel die zich typt, en een groot ticket dat zacht zweeft */
+      .hero { min-height: 100dvh; padding-top: 110px; display: grid; grid-template-columns: 1.1fr .9fr; align-items: center; gap: 40px; overflow: hidden; background: var(--wit); }
+      .hero .typ .letter { visibility: hidden; }
+      .zacht-in { opacity: 0; transform: translateY(36px); transition: opacity .9s ease-out, transform 1.1s cubic-bezier(.22, 1, .36, 1); }
+      .zacht-in.in-beeld { opacity: 1; transform: none; }
+
+      /* Het ticket: een kaart met een afscheurstrook, ronde inkepingen en een stippellijn */
+      .ticketkaart { justify-self: center; width: min(100%, 360px); margin: 40px 0; aspect-ratio: 5 / 7; position: relative; display: grid; grid-template-rows: 72% 28%; background: var(--licht-roze); box-shadow: 0 0 0 1px var(--lijn); rotate: 4deg; animation: zweven 6s ease-in-out infinite;
+        /* Ronde inkepingen links en rechts ter hoogte van de scheurlijn */
+        -webkit-mask: radial-gradient(circle 18px at 0 72%, transparent 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 18px at 100% 72%, transparent 98%, #000) right / 51% 100% no-repeat;
+                mask: radial-gradient(circle 18px at 0 72%, transparent 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 18px at 100% 72%, transparent 98%, #000) right / 51% 100% no-repeat; }
+      @keyframes zweven { 0%, 100% { translate: 0 0; rotate: 4deg; } 50% { translate: 0 -14px; rotate: 2.5deg; } }
+      .ticketkaart .boven { padding: 28px 28px 0; overflow: hidden; display: flex; flex-direction: column; gap: 14px; }
+      .ticketkaart .klein { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--zacht); }
+      .ticketkaart .groot { font-family: var(--marion); text-transform: uppercase; font-size: clamp(28px, 2.9vw, 40px); line-height: 1; }
+      .ticketkaart dl { margin: 18px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; font-size: 16px; }
+      .ticketkaart dt { color: var(--zacht); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; padding-top: 3px; }
+      .ticketkaart dd { margin: 0; font-family: var(--marion); font-size: 18px; text-transform: uppercase; }
+      .ticketkaart .strook { border-top: 2px dashed var(--lijn); display: flex; align-items: center; justify-content: space-between; padding: 0 28px; }
+      .ticketkaart .strook .groot { font-size: 24px; }
+      /* Een 'streepjescode' van dunne en dikke lijnen */
+      .ticketkaart .code { width: 96px; height: 40px; background: repeating-linear-gradient(90deg, var(--tekst) 0 2px, transparent 2px 5px, var(--tekst) 5px 9px, transparent 9px 11px, var(--tekst) 11px 12px, transparent 12px 16px); }
+      @media (prefers-reduced-motion: reduce) {
+        .ticketkaart { animation: none; }
+        .hero .typ .letter { visibility: visible; }
+        .zacht-in { opacity: 1; transform: none; transition: none; }
+      }
+      .hero h1 { font-size: clamp(56px, 9vw, 140px); }
+      .hero .ondertitel { font-size: clamp(20px, 2vw, 28px); margin: 18px 0 32px; }
+      .hero .feiten { display: flex; flex-wrap: wrap; gap: 12px 40px; margin: 0 0 40px; padding: 0; list-style: none; font-size: 18px; }
+      .hero .feiten strong { display: block; font-family: var(--marion); font-weight: 400; font-size: 26px; text-transform: uppercase; }
+      .knop { display: inline-block; padding: 16px 32px; background: var(--tekst); color: var(--wit); text-decoration: none; font-family: var(--marion); text-transform: uppercase; letter-spacing: .08em; font-size: 18px; border: 0; cursor: pointer; transition: opacity .2s; }
+      .knop:hover { opacity: .8; }
+      .knop:disabled { opacity: .35; cursor: not-allowed; }
+      .knop.licht { background: transparent; color: var(--tekst); box-shadow: inset 0 0 0 1px var(--tekst); }
+
+      /* 2. In drie stappen */
+      .stappen { background: var(--wit); }
+      .stappen ol { list-style: none; margin: 48px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--lijn); }
+      .stappen li { padding: 32px 32px 8px 0; }
+      .stappen li + li { padding-left: 32px; border-left: 1px solid var(--lijn); }
+      .stappen .nummer { font-family: var(--marion); font-size: clamp(80px, 9vw, 140px); line-height: .85; display: block; margin-bottom: 20px; }
+      .stappen h3 { font-size: 26px; margin-bottom: 8px; }
+      .stappen p { margin: 0; color: var(--zacht); }
+      /* De drie stappen verschijnen om de beurt (elk een halve seconde later) */
+      .stappen li { opacity: 0; transform: translateY(40px); transition: opacity .8s ease-out, transform 1s cubic-bezier(.22, 1, .36, 1); }
+      .stappen li:nth-child(2) { transition-delay: .5s; }
+      .stappen li:nth-child(3) { transition-delay: 1s; }
+      .stappen .in-beeld li { opacity: 1; transform: none; }
+      @media (prefers-reduced-motion: reduce) { .stappen li { opacity: 1; transform: none; transition: none; } }
+
+      /* 3. Tickets kiezen */
+      .kiezen { background: var(--licht-roze); }
+      .kiezen-grid { display: grid; grid-template-columns: 1fr 360px; gap: 48px; margin-top: 48px; align-items: start; }
+      .ticket { display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; align-items: center; padding: 28px 0; border-top: 1px solid var(--lijn); }
+      .ticket:last-child { border-bottom: 1px solid var(--lijn); }
+      .ticket { opacity: 0; transform: translateY(30px); transition: opacity .7s ease-out, transform .9s cubic-bezier(.22, 1, .36, 1); }
+      .in-beeld .ticket { opacity: 1; transform: none; }
+      .in-beeld .ticket:nth-child(2) { transition-delay: .15s; } .in-beeld .ticket:nth-child(3) { transition-delay: .3s; } .in-beeld .ticket:nth-child(4) { transition-delay: .45s; }
+      @media (prefers-reduced-motion: reduce) { .ticket { opacity: 1; transform: none; transition: none; } }
+      /* Teller: korte 'tik' als het aantal verandert */
+      .teller output.tik { animation: tik .3s ease-out; }
+      @keyframes tik { 50% { transform: scale(1.35); } }
+      .ticket h3 { font-size: 28px; }
+      .ticket .uitleg { grid-column: 1; margin: 0; color: var(--zacht); font-size: 16px; }
+      .ticket .prijs { grid-column: 1; font-size: 20px; }
+      .teller { grid-column: 2; grid-row: 1 / span 3; display: flex; align-items: center; gap: 4px; }
+      .teller button { width: 44px; height: 44px; border: 1px solid var(--tekst); background: transparent; font-size: 22px; cursor: pointer; }
+      .teller button:hover { background: var(--wit); }
+      .teller output { min-width: 40px; text-align: center; font-family: var(--marion); font-size: 26px; }
+      .overzicht { position: sticky; top: 90px; background: var(--wit); padding: 32px; box-shadow: 0 0 0 1px var(--lijn); }
+      .overzicht h3 { font-size: 26px; margin-bottom: 20px; }
+      .overzicht dl { margin: 0 0 24px; }
+      .overzicht .regel { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; font-size: 16px; }
+      .overzicht .totaal { border-top: 1px solid var(--lijn); margin-top: 12px; padding-top: 14px; font-family: var(--marion); font-size: 24px; text-transform: uppercase; }
+      .overzicht .knop { width: 100%; text-align: center; }
+      .overzicht .melding { margin: 16px 0 0; font-size: 14px; color: var(--zacht); min-height: 1.6em; }
+      .leeg { color: var(--zacht); font-size: 16px; }
+
+      /* 4. Veelgestelde vragen */
+      .vragen { background: var(--wit); }
+      .vragen details { border-top: 1px solid var(--lijn); }
+      .vragen details:last-of-type { border-bottom: 1px solid var(--lijn); }
+      .vragen summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 24px; padding: 24px 0; font-family: var(--marion); text-transform: uppercase; font-size: clamp(20px, 2vw, 26px); }
+      .vragen summary::-webkit-details-marker { display: none; }
+      .vragen summary::after { content: '+'; font-family: var(--helvetica); font-size: 28px; line-height: 1; transition: transform .3s; }
+      .vragen details[open] summary::after { transform: rotate(45deg); }
+      .vragen details p { margin: 0 0 24px; max-width: 760px; color: var(--zacht); }
+
+      footer { padding: 40px var(--rand); background: var(--licht-roze); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; font-size: 16px; }
+
+      /* Gsm en tablet */
+      @media (max-width: 900px) {
+        .hero, .kiezen-grid { grid-template-columns: 1fr; }
+        .hero { text-align: left; }
+        .ticketkaart { width: min(74%, 280px); margin: 16px 0 56px; }
+        .ticketkaart .boven { padding: 22px 22px 0; gap: 10px; }
+        .ticketkaart .groot { font-size: 26px; }
+        .ticketkaart dl { margin-top: 8px; gap: 6px 14px; }
+        .ticketkaart dd { font-size: 15px; }
+        .ticketkaart .strook { padding: 0 22px; }
+        .ticketkaart .strook .groot { font-size: 19px; }
+        .ticketkaart .code { width: 76px; height: 32px; }
+        .overzicht { position: static; }
+        .stappen ol { grid-template-columns: 1fr; }
+        .stappen li, .stappen li + li { padding: 28px 0; border-left: 0; }
+        .stappen li + li { border-top: 1px solid var(--lijn); }
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/artist.html">Artist</a>
+      <a href="/tickets.html" aria-current="page">Tickets</a>
+      <a href="/peek.html">Take a peek</a>
+    </nav>
+
+    <main>
+      <!-- 1. Hero: titel, kernfeiten en een groot ticket -->
+      <section class="hero" data-kleur="#ffffff">
+        <div>
+          <p class="label zacht-in">Aleksandra Volenko · Unboxing Exhibition</p>
+          <h1 class="typ">Tickets</h1>
+          <p class="ondertitel zacht-in">Step into her diary, drawings and dance notes — for one day only.</p>
+          <ul class="feiten zacht-in">
+            <li><strong>13 Nov 2026</strong>One day only</li>
+            <li><strong>'t Werkhuys</strong>Antwerp</li>
+            <li><strong>10:00–18:00</strong>Opening hours</li>
+          </ul>
+          <a class="knop zacht-in" href="#kiezen">Choose your tickets</a>
+        </div>
+        <div class="ticketkaart zacht-in" aria-hidden="true">
+          <div class="boven">
+            <span class="klein">Admit one</span>
+            <span class="groot">Aleksandra<br>Volenko</span>
+            <span class="klein">Unboxing Exhibition</span>
+            <dl>
+              <dt>Date</dt><dd>13.11.2026</dd>
+              <dt>Venue</dt><dd>'t Werkhuys</dd>
+              <dt>City</dt><dd>Antwerp</dd>
+            </dl>
+          </div>
+          <div class="strook">
+            <span class="groot">No. 0001</span>
+            <span class="code"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Zo werkt het: drie duidelijke stappen -->
+      <section class="stappen" data-kleur="#ffffff">
+        <div class="binnen verschijn">
+          <p class="label">How it works</p>
+          <h2 style="font-size: clamp(36px, 4vw, 60px)">Three simple steps</h2>
+          <ol>
+            <li><span class="nummer">1</span><h3>Choose</h3><p>Select how many tickets you need for each visitor type.</p></li>
+            <li><span class="nummer">2</span><h3>Pay</h3><p>Check your order and pay securely online.</p></li>
+            <li><span class="nummer">3</span><h3>Visit</h3><p>You receive your e-ticket by email. Show it on your phone at the entrance.</p></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 3. Tickets kiezen met overzicht en totaal -->
+      <section class="kiezen" id="kiezen" data-kleur="#fdf6f6">
+        <div class="binnen verschijn">
+          <p class="label">Step 1</p>
+          <h2 style="font-size: clamp(36px, 4vw, 60px)">Choose your tickets</h2>
+          <div class="kiezen-grid">
+            <div id="ticketlijst"></div>
+            <aside class="overzicht" aria-live="polite">
+              <h3>Your order</h3>
+              <dl id="besteloverzicht"><p class="leeg">No tickets selected yet.</p></dl>
+              <div class="regel totaal"><span>Total</span><span id="totaal">€ 0</span></div>
+              <button class="knop" id="afrekenen" type="button" disabled>Continue to payment</button>
+              <p class="melding" id="melding"></p>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Veelgestelde vragen -->
+      <section class="vragen" data-kleur="#ffffff">
+        <div class="binnen verschijn">
+          <p class="label">Questions</p>
+          <h2 style="font-size: clamp(36px, 4vw, 60px); margin-bottom: 40px">Frequently asked</h2>
+          <details><summary>Can I buy tickets at the door?</summary><p>Only if there are tickets left. The exhibition is open for one day only and places are limited, so we recommend booking online in advance. Any remaining tickets are sold at the entrance on 13 November.</p></details>
+          <details><summary>Do I need to print my ticket?</summary><p>No. Show the e-ticket on your phone at the entrance.</p></details>
+          <details><summary>Can I cancel or change my booking?</summary><p>Because the exhibition takes place on a single day, tickets cannot be refunded or moved to another date. Can’t make it? You can give your ticket to someone else — the e-ticket is not linked to a name.</p></details>
+          <details><summary>Who qualifies for a reduced ticket?</summary><p>Students, visitors aged 65 and over, and visitors with a disability. Please bring a valid student card or ID, as it may be checked at the entrance. Children under 12 have their own ticket.</p></details>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Aleksandra Volenko · Unboxing Exhibition</span>
+      <span>13.11.2026 · 't Werkhuys Antwerpen</span>
+    </footer>
+
+    <script>
+      // ---------------------------------------------------------------
+      // TICKETSOORTEN: pas hier namen, uitleg en prijzen aan.
+      // prijs: null = nog niet bekend (toont "Price to be announced").
+      // ---------------------------------------------------------------
+      const TICKETS = [
+        { id: 'volwassene', naam: 'Adult', uitleg: 'Standard admission', prijs: 12 },
+        { id: 'korting', naam: 'Reduced', uitleg: 'Students, 65+ and visitors with a disability (proof required)', prijs: 8 },
+        { id: 'kind', naam: 'Child', uitleg: 'Under 12', prijs: 4 },
+        { id: 'groep', naam: 'Group', uitleg: 'Per person, for groups of 10 or more', prijs: 10 },
+      ]
+      // Waar de knop naartoe gaat zodra de online verkoop open is (leeg = nog niet open)
+      const BETAALPAGINA = ''
+
+      const aantallen = Object.fromEntries(TICKETS.map(t => [t.id, 0]))
+      const euro = bedrag => '€ ' + bedrag.toFixed(2).replace('.', ',').replace(',00', '')
+      const prijsTekst = t => (t.prijs === null ? 'Price to be announced' : euro(t.prijs))
+
+      const lijst = document.getElementById('ticketlijst')
+      TICKETS.forEach(t => {
+        const rij = document.createElement('div')
+        rij.className = 'ticket'
+        rij.innerHTML = `
+          <h3>${t.naam}</h3>
+          <div class="teller" role="group" aria-label="Number of ${t.naam} tickets">
+            <button type="button" data-actie="min" aria-label="One ${t.naam} ticket less">−</button>
+            <output aria-live="polite">0</output>
+            <button type="button" data-actie="plus" aria-label="One ${t.naam} ticket more">+</button>
+          </div>
+          <p class="uitleg">${t.uitleg}</p>
+          <span class="prijs">${prijsTekst(t)}</span>`
+        rij.querySelectorAll('button').forEach(knop => knop.addEventListener('click', () => {
+          aantallen[t.id] = Math.max(0, Math.min(20, aantallen[t.id] + (knop.dataset.actie === 'plus' ? 1 : -1)))
+          const uit = rij.querySelector('output')
+          uit.textContent = aantallen[t.id]
+          uit.classList.remove('tik'); void uit.offsetWidth; uit.classList.add('tik')
+          werkOverzichtBij()
+        }))
+        lijst.appendChild(rij)
+      })
+
+      function werkOverzichtBij() {
+        const gekozen = TICKETS.filter(t => aantallen[t.id] > 0)
+        const overzicht = document.getElementById('besteloverzicht')
+        overzicht.innerHTML = gekozen.length
+          ? gekozen.map(t => `<div class="regel"><dt>${aantallen[t.id]} × ${t.naam}</dt><dd>${t.prijs === null ? '—' : euro(t.prijs * aantallen[t.id])}</dd></div>`).join('')
+          : '<p class="leeg">No tickets selected yet.</p>'
+        const prijsBekend = gekozen.every(t => t.prijs !== null)
+        const totaal = gekozen.reduce((som, t) => som + (t.prijs || 0) * aantallen[t.id], 0)
+        document.getElementById('totaal').textContent = prijsBekend ? euro(totaal) : '—'
+        document.getElementById('afrekenen').disabled = gekozen.length === 0
+        document.getElementById('melding').textContent = ''
+      }
+
+      document.getElementById('afrekenen').addEventListener('click', () => {
+        if (BETAALPAGINA) { location.href = BETAALPAGINA; return }
+        document.getElementById('melding').textContent = 'Online ticket sales open soon. Your selection is not yet a booking.'
+      })
+
+      // Hero zoals op de homepage: de titel typt zich letter per letter, de rest schuift zacht binnen
+      const geenBeweging = matchMedia('(prefers-reduced-motion: reduce)').matches
+      const titel = document.querySelector('.hero .typ')
+      const letters = [...titel.textContent].map(teken => { const sp = document.createElement('span'); sp.className = 'letter'; sp.textContent = teken; return sp })
+      titel.textContent = ''
+      letters.forEach(l => titel.appendChild(l))
+      if (geenBeweging) letters.forEach(l => { l.style.visibility = 'visible' })
+      else letters.forEach((l, i) => setTimeout(() => { l.style.visibility = 'visible' }, 200 + i * 90))
+      document.querySelectorAll('.hero .zacht-in').forEach((el, i) => setTimeout(() => el.classList.add('in-beeld'), geenBeweging ? 0 : 350 + i * 220))
+
+      // Blokken zacht laten verschijnen bij het scrollen
+      const waarnemer = new IntersectionObserver(items => items.forEach(item => {
+        if (item.isIntersecting) { item.target.classList.add('in-beeld'); waarnemer.unobserve(item.target) }
+      }), { threshold: 0.15 })
+      document.querySelectorAll('.verschijn').forEach(el => waarnemer.observe(el))
+
+      // Navigatie neemt de kleur over van de sectie eronder (zoals op de homepage)
+      const nav = document.querySelector('nav')
+      const secties = [...document.querySelectorAll('[data-kleur]')]
+      function kleurNav() {
+        const onder = nav.getBoundingClientRect().bottom
+        const sectie = secties.find(s => { const r = s.getBoundingClientRect(); return r.top <= onder && r.bottom > onder })
+        nav.style.backgroundColor = sectie ? sectie.dataset.kleur : '#ffffff'
+      }
+      addEventListener('scroll', kleurNav, { passive: true })
+      kleurNav()
+    </script>
+  </body>
+</html>

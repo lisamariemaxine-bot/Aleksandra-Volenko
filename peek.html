@@ -1,0 +1,2878 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="https://use.typekit.net/hqn5mkz.css">
+    <title>Take a peek</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; font-family: Helvetica, Arial, sans-serif; }
+
+      /* Navigatie: dezelfde als op de andere pagina's, blijft altijd zichtbaar */
+      nav { position: fixed; top: 0; left: 0; right: 0; background: #fff; padding: 8px 20px; display: flex; justify-content: center; gap: 60px; z-index: 1000; }
+      nav a { text-decoration: none; color: #000; font-family: "marion-standard", Georgia, serif; text-transform: uppercase; letter-spacing: 0.04em; font-size: 24px; transition: opacity .2s; white-space: nowrap; }
+      nav a:hover { opacity: .6; }
+      @media (max-width: 768px) { nav { gap: 30px; padding: 8px 15px; } nav a { font-size: 16px; } }
+      @media (max-width: 480px) { nav { gap: 15px; padding: 8px 12px; } nav a { font-size: 14px; } }
+
+      /* De 3D-ruimte vult alles onder de navigatie (top wordt in JS gezet) */
+      #ruimte { position: fixed; left: 0; right: 0; bottom: 0; top: 44px; }
+      #ruimte canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+      /* Wit beginscherm */
+      #start { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; background: transparent; color: #111; text-align: center; cursor: pointer; overflow: hidden; }
+      /* Knipperend oog: klik erop om binnen te gaan */
+      #start .oog { width: clamp(180px, 30vw, 360px); height: auto; overflow: visible; transition: transform .25s; }
+      #start .oog:hover { transform: scale(1.15); }
+      /* Na 3 s zonder klik: het oog wordt heel groot en kijkt de ruimte rond */
+      /* Na 3 s: het oog wordt groot (--oog-groot, in JS berekend op basis van het scherm) */
+      #start.groot .oog { transform: scale(var(--oog-groot, 2.5)); transition: transform 1.2s cubic-bezier(.22, 1, .36, 1); }
+      /* Zodra 'Klik om te kijken' verschijnt: twee keer snel knipperen */
+      #start.dubbelknip .knipper { animation: dubbelknip .7s ease-in-out 1; }
+      @keyframes dubbelknip {
+        0%, 32%, 64%, 100% { transform: scaleY(1); }
+        16%, 48% { transform: scaleY(0.05); }
+      }
+      /* 'Klik om te kijken' staat midden in de pupil, wit over het beeld van de kamer */
+      .oog-hint { position: absolute; left: 0; right: 0; top: 50%; margin: 0; text-align: center; font-family: 'marion-standard', Georgia, serif; font-size: var(--hint-grootte, 28px); text-transform: uppercase; letter-spacing: .08em; color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, .55), 0 0 2px rgba(0, 0, 0, .4); opacity: 0; transform: translateY(calc(-50% + 12px)); transition: opacity .8s ease, transform .8s ease; pointer-events: none; }
+      #start.hint .oog-hint { opacity: 1; transform: translateY(-50%); }
+      /* Gsm: kleinere pupil, dus de tekst kleiner en op twee regels */
+      @media (max-width: 700px) { .oog-hint { max-width: 7.5em; margin: 0 auto; line-height: 1.3; } }
+      #start.binnengaan .oog-hint { opacity: 0; }
+      /* Binnengaan: het oog zoomt in tot de pupil het scherm vult, daarna
+         vervaagt het zwart en sta je in de kamer */
+      #start.binnengaan { cursor: default; }
+      #start.binnengaan .knipper { animation: none; }
+      #start.binnengaan .oog { transform: scale(110); transition: transform 1.1s cubic-bezier(.6, 0, .9, .45); }
+      /* Knipperen: ongeveer elke 2,5 s, met af en toe een dubbele knipper */
+      #start .knipper { transform-box: fill-box; transform-origin: center; animation: knipper 5s infinite; }
+      @keyframes knipper {
+        0%, 40%, 50%, 82%, 88%, 94%, 100% { transform: scaleY(1); }
+        45% { transform: scaleY(0.05); }
+        85% { transform: scaleY(0.05); }
+        91% { transform: scaleY(0.05); }
+      }
+      @media (prefers-reduced-motion: reduce) { #start .knipper { animation: none; } }
+      .alleen-voorlezen { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      #start.verborgen { display: none; }
+
+      /* Richtpuntje in het midden (desktop) */
+      #vizier { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(0,0,0,.35); pointer-events: none; z-index: 5; }
+
+      /* Label dat verschijnt als je in de buurt van het videoscherm bent */
+      #hint { position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%); z-index: 6; padding: 10px 16px; background: rgba(255,255,255,.92); border: 1px solid #ddd; color: #111; font-size: 14px; white-space: nowrap; opacity: 0; transition: opacity .3s; pointer-events: none; }
+      #hint.zichtbaar { opacity: 1; }
+
+      /* Joystick voor telefoons */
+      #joystick { position: absolute; left: 24px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%; background: rgba(0,0,0,.06); border: 1px solid rgba(0,0,0,.15); z-index: 6; display: none; touch-action: none; }
+      #joystick-knop { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(0,0,0,.25); }
+      body.touch #joystick { display: block; }
+      body.touch #vizier { display: none; }
+      /* Muis zichtbaar: geen vizier, slepen om rond te kijken */
+      body.muis-zichtbaar #vizier { display: none; }
+      body.muis-zichtbaar canvas { cursor: grab; }
+      body.muis-zichtbaar canvas.sleept { cursor: grabbing; }
+
+      /* Geluidsknop linksboven */
+      /* Kruisje rechtsboven om de ruimte te verlaten; alleen zichtbaar als je binnen bent */
+      #sluit-knop { position: absolute; right: 16px; top: 16px; z-index: 25; display: none; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,.92); border: 1px solid #ddd; color: #111; font: 14px Helvetica, Arial, sans-serif; cursor: pointer; }
+      #sluit-knop:hover { background: #fff; }
+      #sluit-knop .kruis-icoon { font-size: 22px; line-height: 1; }
+      #start.verborgen ~ #sluit-knop { display: flex; }
+      body.touch #sluit-knop .toets { display: none; }
+      #geluid-knop { position: absolute; left: 16px; top: 16px; z-index: 25; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,.92); border: 1px solid #ddd; color: #111; font: 14px Helvetica, Arial, sans-serif; cursor: pointer; }
+      #geluid-knop:hover { background: #fff; }
+      #geluid-knop .kruis { display: none; }
+      #geluid-knop[aria-pressed="false"] .kruis { display: inline; }
+      #geluid-knop[aria-pressed="false"] .golf { display: none; }
+
+      /* Video van het scherm: onzichtbaar, behalve op volledig scherm */
+      #video-vol { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; background: #000; }
+      #video-vol:fullscreen { width: 100%; height: 100%; opacity: 1; pointer-events: auto; cursor: pointer; }
+      #video-vol video { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+      /* Hint op volledig scherm: hoe je terug in de zaal komt */
+      #video-vol .terug-hint { position: absolute; right: 16px; top: 16px; margin: 0; padding: 8px 12px; background: rgba(255,255,255,.92); border: 1px solid #ddd; color: #111; font: 15px Helvetica, Arial, sans-serif; letter-spacing: .02em; white-space: nowrap; transition: opacity .6s; }
+      #video-vol .terug-hint kbd { display: inline-block; padding: 1px 7px; margin: 0 2px; border: 1px solid #111; border-radius: 4px; font: inherit; }
+      #video-vol.stil .terug-hint { opacity: .55; }
+      /* Na de video: klik om verder rond te kijken in de zaal */
+      #verder { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,.25); cursor: pointer; }
+      #verder.zichtbaar { display: flex; }
+      #verder span { padding: 14px 28px; background: #111; color: #fff; font: 17px Helvetica, Arial, sans-serif; }
+
+      /* Melding bij de uitgang */
+      #uitgang-melding { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 20; width: min(440px, calc(100% - 32px)); padding: 32px 28px; background: #fff; border: 1px solid #ddd; color: #111; text-align: center; display: none; }
+      #uitgang-melding.zichtbaar { display: block; }
+      #uitgang-melding h2 { margin: 0 0 12px; font-size: 26px; font-weight: 400; }
+      #uitgang-melding p { margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #555; }
+      #uitgang-melding a { display: block; padding: 14px; background: #111; color: #fff; text-decoration: none; font-size: 16px; }
+      #uitgang-melding button { margin-top: 12px; padding: 8px; border: 0; background: none; color: #555; font: inherit; font-size: 14px; text-decoration: underline; cursor: pointer; }
+      #mand-melding { width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 32px; border: 1px solid #d9d3cd; background: #fdf6f6; color: #111; text-align: center; }
+      /* Korte uitleg van de besturing, vlak na het binnengaan */
+      /* Uitleg vóór je begint: stap voor stap, met echte toetsen op het scherm */
+      #tutorial { width: min(760px, calc(100% - 32px)); min-height: min(520px, calc(100dvh - 32px)); max-height: calc(100dvh - 32px); padding: 40px 48px 32px; border: 1px solid #ddd; background: #fff; color: #111; font: 18px/1.5 Helvetica, Arial, sans-serif; text-align: center; }
+      #tutorial[open] { display: flex; flex-direction: column; }
+      #tutorial::backdrop { background: rgba(255,255,255,.35); backdrop-filter: blur(2px); }
+      #tutorial .stapnr { margin: 0 0 8px; color: #888; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; }
+      #tutorial h2 { margin: 0 0 10px; font: 700 36px/1.15 Helvetica, Arial, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+      #tutorial .tekst { margin: 0 auto; max-width: 30em; color: #444; }
+      #tutorial .beeld { flex: 1; display: flex; align-items: center; justify-content: center; gap: 28px; min-height: 180px; padding: 24px 0; }
+      #tutorial .toetsen { display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(2, 64px); gap: 8px; }
+      #tutorial .toetsen .boven { grid-column: 2; grid-row: 1; }
+      #tutorial .toetsen .toets:not(.boven) { grid-row: 2; }
+      #tutorial .toets { display: flex; align-items: center; justify-content: center; min-width: 64px; height: 64px; padding: 0 12px; border: 2px solid #222; border-bottom-width: 6px; border-radius: 10px; background: #fff; font: 600 24px Helvetica, Arial, sans-serif; animation: indrukken 2.4s infinite; }
+      #tutorial .toets.breed { min-width: 104px; }
+      #tutorial .toetsen .toets:nth-child(2) { animation-delay: .6s; } #tutorial .toetsen .toets:nth-child(3) { animation-delay: 1.2s; } #tutorial .toetsen .toets:nth-child(4) { animation-delay: 1.8s; }
+      @keyframes indrukken { 0%, 20%, 100% { transform: none; border-bottom-width: 6px; } 8% { transform: translateY(4px); border-bottom-width: 2px; background: #e6e6e6; } }
+      @media (prefers-reduced-motion: reduce) { #tutorial .toets { animation: none; } }
+      #tutorial .of { font-size: 16px; color: #888; }
+      #tutorial .icoon { width: 96px; height: 132px; }
+      #tutorial .icoon.breed { width: 150px; height: 150px; }
+      #tutorial .stippen { display: flex; justify-content: center; gap: 8px; margin: 0 0 20px; }
+      #tutorial .stippen span { width: 9px; height: 9px; border-radius: 50%; background: #ddd; }
+      #tutorial .stippen span.nu { background: #111; }
+      #tutorial .knoppen { display: flex; justify-content: center; gap: 12px; }
+      #tutorial button { padding: 14px 32px; border: 1px solid #111; background: #111; color: #fff; font: 17px Helvetica, Arial, sans-serif; cursor: pointer; }
+      #tutorial button.terug { background: #fff; color: #111; }
+      /* Kruisje rechtsboven om de uitleg over te slaan */
+      #tutorial button.overslaan { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; padding: 0; border: 0; background: transparent; color: #111; font: 300 30px/1 Helvetica, Arial, sans-serif; cursor: pointer; }
+      #tutorial button.overslaan:hover { opacity: .6; }
+      #tutorial button[hidden] { display: none; }
+      /* Op vraag verborgen: de geluidsknop linksboven */
+      #geluid-knop { display: none !important; }
+      @media (max-width: 560px) { #tutorial { padding: 28px 18px 22px; font-size: 16px; } #tutorial h2 { font-size: 30px; } #tutorial .toetsen { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); } #tutorial .toets { min-width: 48px; height: 48px; font-size: 19px; } #tutorial .beeld { gap: 14px; } }
+      /* Timer bovenaan: hoeveel tijd je nog hebt om rond te kijken */
+      #timer { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 25; display: none; padding: 8px 14px; background: rgba(255,255,255,.92); border: 1px solid #ddd; color: #111; font: 14px Helvetica, Arial, sans-serif; font-variant-numeric: tabular-nums; }
+      #start.verborgen ~ #timer { display: block; }
+      #timer.bijna { color: #9c1c2c; }
+      #tijd-op { width: min(460px, calc(100% - 32px)); padding: 32px; border: 1px solid #d9d3cd; background: #fdf6f6; color: #111; text-align: center; }
+      #tijd-op::backdrop { background: rgba(0,0,0,.45); }
+      #tijd-op h2 { margin: 0 0 16px; font: 400 30px/1.2 'marion-standard', Georgia, serif; }
+      #tijd-op p { margin: 0 0 24px; font: 18px/1.6 Helvetica, Arial, sans-serif; }
+      #tijd-op a { display: block; padding: 14px; background: #111; color: #fff; text-decoration: none; font: 16px Helvetica, Arial, sans-serif; }
+      #tijd-op button { margin-top: 12px; padding: 8px; border: 0; background: none; color: #555; font: 14px Helvetica, Arial, sans-serif; text-decoration: underline; cursor: pointer; }
+      #mand-melding::backdrop { background: rgba(0,0,0,.38); }
+      #mand-melding h2 { margin: 0 0 16px; font: 400 30px/1.2 'marion-standard',Georgia,serif; }
+      #mand-melding p { font: 18px/1.6 Helvetica,Arial,sans-serif; }
+      #mand-melding button { padding: 12px 20px; border: 0; background: #111; color: #fff; font: 16px Helvetica,Arial,sans-serif; cursor: pointer; }
+      /* Melding op gsm/tablet */
+      #alleen-laptop { position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 100px 24px 40px; background: #fff; color: #111; text-align: center; font: 17px/1.55 Helvetica, Arial, sans-serif; }
+      #alleen-laptop[hidden] { display: none; }
+      #alleen-laptop .label { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #777; }
+      #alleen-laptop h1 { margin: 0; font: 400 clamp(32px, 9vw, 48px)/1.1 'marion-standard', Georgia, serif; text-transform: uppercase; letter-spacing: .02em; }
+      #alleen-laptop p { margin: 0; max-width: 24em; color: #444; }
+      #alleen-laptop a { margin-top: 12px; padding: 14px 28px; background: #111; color: #fff; text-decoration: none; font-size: 16px; }
+      html.geen-laptop body > *:not(nav):not(#alleen-laptop):not(script) { display: none !important; }
+    </style>
+    <!-- Three.js via CDN -->
+    <script type="importmap">
+      { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+    </script>
+  </head>
+  <body>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/artist.html">Artist</a>
+      <a href="/tickets.html">Tickets</a>
+      <a href="/peek.html">Take a peek</a>
+    </nav>
+    <!-- Op gsm en tablet: 'Take a peek' werkt alleen op een laptop of computer -->
+    <div id="alleen-laptop" hidden>
+      <p class="label">Take a peek</p>
+      <h1>Only on a laptop</h1>
+      <p>The virtual tour of the exhibition needs a keyboard and mouse. Open this page on a laptop or desktop computer to walk around.</p>
+      <a href="/">Back to home</a>
+    </div>
+    <script>
+      // Gsm/tablet (aanraakscherm zonder muis): rondleiding niet starten
+      if (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) {
+        document.documentElement.classList.add('geen-laptop')
+        document.getElementById('alleen-laptop').hidden = false
+      }
+    </script>
+
+    <div id="ruimte">
+      <div id="start" role="button" tabindex="0" aria-describedby="uitleg">
+        <!-- Het oog: alles is wit behalve de pupil, die is een gat waardoor je
+             de expositie al ziet. Bij het binnengaan zoomt het gat open. -->
+        <svg class="oog" viewBox="0 0 120 70" aria-hidden="true">
+          <defs>
+            <mask id="pupil-gat" maskUnits="userSpaceOnUse" x="-4000" y="-4000" width="8120" height="8070">
+              <rect x="-4000" y="-4000" width="8120" height="8070" fill="#fff"/>
+              <circle class="knipper pupil" cx="60" cy="35" r="21" fill="#000"/>
+            </mask>
+          </defs>
+          <g mask="url(#pupil-gat)">
+            <rect x="-4000" y="-4000" width="8120" height="8070" fill="#fff"/>
+            <g class="knipper">
+              <path d="M6 35 Q60 -12 114 35 Q60 82 6 35 Z" fill="#fff" stroke="#111" stroke-width="3" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+            </g>
+          </g>
+          <!-- Rand van de pupil: even dik als de rand van het oog (3 px op het scherm) -->
+          <circle class="knipper pupil" cx="60" cy="35" r="21" fill="none" stroke="#111" stroke-width="3" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <p class="oog-hint" aria-hidden="true">Click to take a peek</p>
+        <span class="alleen-voorlezen" id="uitleg">Click to enter. Walk with ZQSD or the arrow keys, look around with the mouse and press Esc to stop.</span>
+      </div>
+      <div id="vizier"></div>
+      <div id="hint"></div>
+      <button type="button" id="sluit-knop" aria-label="Leave the room">
+        <span class="toets">Esc</span><span class="kruis-icoon" aria-hidden="true">×</span>
+      </button>
+      <div id="timer" role="timer" aria-live="off">3:00</div>
+      <button type="button" id="geluid-knop" aria-pressed="true" aria-label="Turn sound off">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path class="golf" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="kruis" d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>Sound on</span>
+      </button>
+      <div id="uitgang-melding" class="melding" role="dialog" aria-labelledby="uitgang-titel">
+        <h2 id="uitgang-titel">Back to the homepage?</h2>
+        <p>You are at the exit of the exhibition. Are you sure you want to go back to the homepage?</p>
+        <a href="/" id="uitgang-ja">Yes, take me to the homepage</a>
+        <button type="button" id="uitgang-nee">No, I'll stay a little longer</button>
+      </div>
+      <div id="joystick"><div id="joystick-knop"></div></div>
+    </div>
+
+    <dialog id="tutorial" aria-labelledby="uitleg-titel"></dialog>
+
+    <dialog id="tijd-op" aria-labelledby="tijd-op-titel" aria-describedby="tijd-op-tekst">
+      <h2 id="tijd-op-titel">Your time is up</h2>
+      <p id="tijd-op-tekst">This was only a small peek. Want to see it all for real? Get your tickets and visit the exhibition on 13 November 2026.</p>
+      <a href="/tickets.html">Buy tickets</a>
+      <form method="dialog"><button>Back to the start</button></form>
+    </dialog>
+
+    <dialog id="mand-melding" aria-labelledby="mand-titel" aria-describedby="mand-tekst">
+      <h2 id="mand-titel">Curious what's inside?</h2>
+      <p id="mand-tekst">Wondering what's inside this box? Come to the exhibition and find out.</p>
+      <form method="dialog"><button autofocus>Keep looking</button></form>
+    </dialog>
+
+    <script type="module">
+      import * as THREE from 'three'
+
+      // =====================================================================
+      // INSTELLINGEN: pas hier je eigen bestanden aan
+      // =====================================================================
+
+      // Pad naar de video in de videohoek (bestand in de map public/)
+      // Op gsm/tablet: de 3D-rondleiding niet laden (stopt hier, zonder foutmelding)
+      if (document.documentElement.classList.contains('geen-laptop')) await new Promise(() => {})
+      const VIDEO_PAD = '/WhatsApp Video 2026-11-09 at 16.41.50 (1).mp4'
+
+      // Achtergrondmuziek die speelt terwijl je rondwandelt (oude balletmuziek)
+      const MUZIEK_PAD = '/audio/ballet.mp3'
+      const MUZIEK_VOLUME = 0.35
+
+      // Titels op de kleine bordjes
+      const VIDEO_TITEL = 'Video'
+
+      // Tijdlijn: hangende banen voor de oostmuur. Per hoofdstuk: jaartal, titel en tekst.
+      const TIJDLIJN_TITEL = 'Aleksandra Volenko'
+      const TIJDLIJN = [
+        { jaar: '1899', titel: 'Born in Pavlovsk', tekst: 'Aleksandra Volenko is born in Pavlovsk, an elegant neighbouring estate just south of Tsarskoye Selo. She grows up among palaces, parks and music.' },
+        { jaar: '1907', titel: 'The Imperial Ballet School', tekst: 'At eight years old she begins her ballet education at the Imperial Ballet School in Saint Petersburg. Years of discipline, daily classes at the barre and her first steps on stage.' },
+        { jaar: '1917', titel: 'Revolution and flight', tekst: 'The Russian Revolution breaks out. Aleksandra flees Russia for Denmark. On her way she fills her notebooks with drawings of the journey: stations, faces, landscapes passing by.' },
+        { jaar: '1917–1922', titel: 'A small, cold room', tekst: 'In Copenhagen she lives in a small, cold room. She survives by sewing costumes for the theatre and by teaching ballet, while she keeps practising on her own.' },
+        { jaar: '1922–1935', titel: 'Breakthrough', tekst: 'A choreographer notices her, and her career takes off. She becomes known for her expressive performances and an almost otherworldly stage presence.' },
+        { jaar: '1939–1940', titel: 'The fishing village', tekst: 'The Second World War breaks out. Theatres close, performances are cancelled and artists leave. In 1940 she flees to a coastal fishing village, carrying the same suitcase. Many drawings from that time survive, but there is no place for ballet.' },
+        { jaar: '1946–1948', titel: 'Disappearance', tekst: 'After the war she tries to return to ballet, but the world has moved on and audiences want something new. In 1948 she disappears from the ballet world. Nothing more is written in her diary.' },
+        { jaar: '2026', titel: 'The fragments return', tekst: 'What happened between 1948 and today remains unknown. Now the fragments are brought together in an exhibition dedicated to the life and legacy of Aleksandra Volenko.' },
+      ]
+
+      // Schilderijen aan de muur. Per werk: het bestand, de muur ('noord' | 'zuid'),
+      // 'pos' voor de volgorde langs die muur (kleinste eerst, van links naar rechts) en de hoogte van het
+      // doek. De breedte volgt uit de afbeelding, dus er wordt niets bijgesneden.
+      // De werken worden per muur vanzelf verdeeld met overal evenveel witruimte.
+      // kader: true = wit kader met passe-partout en een leeg kaartje eronder.
+      // lijst: true = smalle houten lijst rond het schilderij.
+      // y = hoger (+) of lager (-) dan de gewone ooghoogte, in meter, voor een speelse lijn.
+      const AFBEELDINGEN = [
+        // Let op: in "Scherm\u00ADafbeelding" zit een onzichtbaar afbreekstreepje (macOS)
+        // Noordmuur: cluster rechts van de tekst, met dunne zwarte lijsten.
+        // plek = [x, hoogte] van het midden, diepte = afstand van de muur (voor/achter).
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-09 om 22.00.43.png', muur: 'noord', pos: 1, h: 0.95, plek: [5.05, 1.45], diepte: 0.16, dun: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-09 om 19.19.51.png', muur: 'noord', pos: 2, h: 0.5, plek: [3.2, 0.85], diepte: 0.12, dun: true },
+        { afbeelding: '/painting66.jpg', draai: 180, muur: 'noord', pos: 3, h: 0.55, plek: [3.0, 2.55], diepte: 0.14, dun: true },
+        { afbeelding: '/painting22.jpg', draai: -90, muur: 'noord', pos: 4, h: 0.6, plek: [2.4, 1.75], diepte: 0.2, dun: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-09 om 19.32.58.png', muur: 'noord', pos: 5, h: 1.0, plek: [3.9, 1.75], diepte: 0.26, dun: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-09 om 19.55.57.png', muur: 'noord', pos: 6, h: 0.45, plek: [4.55, 2.6], diepte: 0.12, dun: true },
+        // Oude foto's op de zuidmuur, elk in een wit kader met een (nog leeg) uitlegkaartje
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.44.45.png', muur: 'zuid', pos: 1, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.44.49.png', muur: 'zuid', pos: 2, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.44.53.png', muur: 'zuid', pos: 3, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.44.57.png', muur: 'zuid', pos: 4, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.01.png', muur: 'zuid', pos: 5, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.06.png', muur: 'zuid', pos: 6, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.10.png', muur: 'zuid', pos: 7, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.14.png', muur: 'zuid', pos: 8, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.18.png', muur: 'zuid', pos: 9, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.23.png', muur: 'zuid', pos: 10, h: 0.42, kader: true },
+        { afbeelding: '/Scherm\u00ADafbeelding 2026-11-12 om 11.45.27.png', muur: 'zuid', pos: 11, h: 0.42, kader: true },
+      ]
+
+      // =====================================================================
+      // Afmetingen van de ruimte (in meter)
+      // =====================================================================
+      // Eén grote galeriezaal van 14 × 10 m, naar het voorbeeld van de foto's:
+      // witte bakstenen muren, betonvloer, balkenplafond met lichtkoepels.
+      const ZAAL = { minX: -7, maxX: 7, minZ: -5, maxZ: 5 }
+      const HOOGTE = 3.8            // plafond boven de balken (hoog genoeg voor het grote scherm)
+      const BALK_H = 0.2            // hoogte van de plafondbalken
+      // Zware ligger op gietijzeren kolommen. Links ervan (west) ligt een lager,
+      // vlak plafond met inbouwspots: daar hangt het videoscherm.
+      const LIGGER_X = -2.5
+      const LAAG_PLAFOND = 3.6    // plafond van de videoruimte
+      const KOLOMMEN_Z = [-1.67, 1.67]
+      // Lichtkoepels in het balkenplafond
+      const DAKRAMEN = [
+        { minX: 0.2, maxX: 4.6, minZ: -3.6, maxZ: -1.0 },
+        { minX: 0.2, maxX: 4.6, minZ: 1.0, maxZ: 3.6 },
+      ]
+      // Uitgang naar de homepage: een rechte deuropening in de oostmuur
+      const UITGANG_Z = -2.6        // z-positie van het midden
+      const DEUR = 0.6              // halve breedte
+      const DEURHOOGTE = 2.2
+      // Videoscherm: midden op de westmuur
+      const VIDEO_Z = 0
+      const OOGHOOGTE = 1.6
+      const LOOPSNELHEID = 2.4
+      const SPELER_STRAAL = 0.3
+
+      const container = document.getElementById('ruimte')
+      const nav = document.querySelector('nav')
+      const startScherm = document.getElementById('start')
+      const hint = document.getElementById('hint')
+      const isTouch = matchMedia('(pointer: coarse)').matches
+      if (isTouch) {
+        document.body.classList.add('touch')
+        document.getElementById('uitleg').textContent = 'Tap to enter. Walk with the joystick at the bottom left and drag across the screen to look around.'
+      }
+
+      // De ruimte begint exact onder de navigatie
+      const zetBovenkant = () => { container.style.top = `${nav.getBoundingClientRect().height}px` }
+      new ResizeObserver(zetBovenkant).observe(nav)
+      zetBovenkant()
+
+      // ---------------------------------------------------------------------
+      // Renderer, scène en camera
+      // ---------------------------------------------------------------------
+      const renderer = new THREE.WebGLRenderer({ antialias: true })
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+      renderer.shadowMap.enabled = true
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap
+      renderer.outputColorSpace = THREE.SRGBColorSpace
+      renderer.toneMapping = THREE.ACESFilmicToneMapping
+      renderer.toneMappingExposure = 0.9
+      container.prepend(renderer.domElement)
+
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color('#f4f4f2')
+
+      const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 50)
+      camera.rotation.order = 'YXZ'
+      // Startpunt: net binnen bij de uitgang, met je rug naar de deur
+      camera.position.set(ZAAL.maxX - 1, OOGHOOGTE, UITGANG_Z)
+
+      function pasGrootteAan() {
+        const { clientWidth: w, clientHeight: h } = container
+        renderer.setSize(w, h, false)
+        camera.aspect = w / Math.max(h, 1)
+        camera.updateProjectionMatrix()
+      }
+      new ResizeObserver(pasGrootteAan).observe(container)
+      pasGrootteAan()
+
+      // ---------------------------------------------------------------------
+      // Materialen
+      // ---------------------------------------------------------------------
+      // Een beetje eigen licht, zodat het plafond wit blijft en niet grijs wordt
+      const plafondMat = new THREE.MeshStandardMaterial({ color: '#f6f6f3', roughness: 1, emissive: '#ffffff', emissiveIntensity: 0.12 })
+      const witMat = new THREE.MeshStandardMaterial({ color: '#f4f4f1', roughness: 0.7 })
+      const randMat = new THREE.MeshStandardMaterial({ color: '#c9c6c1', roughness: 0.7 })
+      const donkerMat = new THREE.MeshStandardMaterial({ color: '#222', roughness: 0.4 })
+      // Lichtgevende vlakken (tl-lijnen, inbouwspots, glas van de lichtkoepels)
+      const lichtMat = new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false })
+
+      // Witgeschilderde baksteen: één tegel van 8 stenen breed en 16 lagen hoog,
+      // getekend op een canvas. Eén canvas voor de kleur, één voor het reliëf.
+      const STEEN_B = 0.24, STEEN_H = 0.075
+      const TEGEL_B = STEEN_B * 8, TEGEL_H = STEEN_H * 16
+      function tekenBakstenen(ctx, w, h, voeg, steen, metRandjes) {
+        ctx.fillStyle = voeg; ctx.fillRect(0, 0, w, h)
+        const sb = w / 8, sh = h / 16, v = 5
+        for (let rij = 0; rij < 16; rij++) {
+          const verschuif = rij % 2 ? sb / 2 : 0
+          for (let k = -1; k < 8; k++) {
+            const x = k * sb + verschuif + v / 2, y = rij * sh + v / 2
+            ctx.fillStyle = steen()
+            ctx.fillRect(x, y, sb - v, sh - v)
+            if (!metRandjes) continue
+            // Lichtje bovenaan en schaduwtje onderaan elke steen
+            ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillRect(x, y, sb - v, 2)
+            ctx.fillStyle = 'rgba(0,0,0,.09)'; ctx.fillRect(x, y + sh - v - 3, sb - v, 3)
+          }
+        }
+      }
+      const steenKleur = canvasTextuur(1024, 1024, (ctx, w, h) => {
+        tekenBakstenen(ctx, w, h, '#d9d8d2', () => {
+          const t = 232 + Math.random() * 14
+          return `rgb(${t}, ${t}, ${t - 3})`
+        }, true)
+        // Wat oneffenheden in de verf
+        for (let i = 0; i < 2500; i++) {
+          ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.035})`
+          ctx.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 4, 2 + Math.random() * 3)
+        }
+      })
+      const steenRelief = canvasTextuur(1024, 1024, (ctx, w, h) => {
+        tekenBakstenen(ctx, w, h, '#4a4a4a', () => {
+          const t = 205 + Math.random() * 50
+          return `rgb(${t}, ${t}, ${t})`
+        }, false)
+      })
+      // Elk stuk muur krijgt een eigen herhaling, zodat de stenen overal even groot zijn
+      function muurMateriaal(lengte, hoogte, y0 = 0) {
+        const map = steenKleur.clone(), bumpMap = steenRelief.clone()
+        ;[map, bumpMap].forEach(t => {
+          t.wrapS = t.wrapT = THREE.RepeatWrapping
+          t.repeat.set(lengte / TEGEL_B, hoogte / TEGEL_H)
+          t.offset.y = y0 / TEGEL_H
+          t.needsUpdate = true
+        })
+        return new THREE.MeshStandardMaterial({ map, bumpMap, bumpScale: 2, roughness: 0.92 })
+      }
+
+      // Gepolierde betonvloer: grijs met wolken en een fijne korrel
+      const BETON_TEGEL = 4
+      const betonTex = canvasTextuur(1024, 1024, (ctx, w, h) => {
+        ctx.fillStyle = '#8e8e8a'; ctx.fillRect(0, 0, w, h)
+        for (let i = 0; i < 220; i++) {
+          const x = Math.random() * w, y = Math.random() * h, r = 40 + Math.random() * 170
+          const kleur = Math.random() > 0.5 ? '255,255,255' : '60,60,62'
+          const sterkte = 0.04 + Math.random() * 0.07
+          // Ook over de randen tekenen, zodat de tegel naadloos herhaalt
+          for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) {
+            if (x + dx + r < 0 || x + dx - r > w || y + dy + r < 0 || y + dy - r > h) continue
+            const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r)
+            g.addColorStop(0, `rgba(${kleur},${sterkte})`)
+            g.addColorStop(1, `rgba(${kleur},0)`)
+            ctx.fillStyle = g
+            ctx.fillRect(x + dx - r, y + dy - r, r * 2, r * 2)
+          }
+        }
+        for (let i = 0; i < 9000; i++) {
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)'
+          ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2)
+        }
+      })
+      betonTex.wrapS = betonTex.wrapT = THREE.RepeatWrapping
+      betonTex.repeat.set((ZAAL.maxX - ZAAL.minX) / BETON_TEGEL, (ZAAL.maxZ - ZAAL.minZ) / BETON_TEGEL)
+      const vloerMat = new THREE.MeshStandardMaterial({ map: betonTex, roughness: 0.45 })
+
+      // Verweerd gietijzer voor de kolommen: afgebladderde lichte verf met
+      // grijze, groene en okeren vlekken
+      const kolomTex = canvasTextuur(256, 1024, (ctx, w, h) => {
+        ctx.fillStyle = '#d6d5cf'; ctx.fillRect(0, 0, w, h)
+        const tinten = ['#a5a6a2', '#8c9493', '#b9aa86', '#7f8b6c', '#c8c3b4', '#eceae4', '#9a8f7c']
+        for (let i = 0; i < 1400; i++) {
+          ctx.globalAlpha = 0.08 + Math.random() * 0.24
+          ctx.fillStyle = tinten[Math.floor(Math.random() * tinten.length)]
+          ctx.beginPath()
+          ctx.ellipse(Math.random() * w, Math.random() * h, 1 + Math.random() * 7, 3 + Math.random() * 26, (Math.random() - 0.5) * 0.3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.globalAlpha = 1
+      })
+      const kolomMat = new THREE.MeshStandardMaterial({ map: kolomTex, roughness: 0.75, metalness: 0.15 })
+
+      // Hulpfunctie voor een blok met schaduw
+      function blok(w, h, d, mat, x, y, z) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+        mesh.position.set(x, y, z)
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        scene.add(mesh)
+        return mesh
+      }
+      // Blok zonder schaduw: voor alles wat aan het plafond hangt
+      function plafondBlok(w, h, d, mat, x, y, z) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+        mesh.position.set(x, y, z)
+        scene.add(mesh)
+        return mesh
+      }
+
+      // ---------------------------------------------------------------------
+      // Botsingen: blokken waar je niet door kunt lopen (x/z-rechthoeken)
+      // ---------------------------------------------------------------------
+      const obstakels = []
+      const voegObstakelToe = (x, z, w, d) => obstakels.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 })
+
+      // ---------------------------------------------------------------------
+      // Vloer
+      // ---------------------------------------------------------------------
+      const zaalB = ZAAL.maxX - ZAAL.minX, zaalD = ZAAL.maxZ - ZAAL.minZ
+      const vloer = new THREE.Mesh(new THREE.PlaneGeometry(zaalB, zaalD), vloerMat)
+      vloer.rotation.x = -Math.PI / 2
+      vloer.receiveShadow = true
+      scene.add(vloer)
+
+      // ---------------------------------------------------------------------
+      // Muren: een recht stuk bakstenen muur tussen twee punten (altijd langs
+      // x of z). y0/y1 = onder- en bovenkant.
+      // ---------------------------------------------------------------------
+      function muur(x1, z1, x2, z2, y0 = 0, y1 = HOOGTE) {
+        const langsX = z1 === z2
+        const lengte = Math.abs(langsX ? x2 - x1 : z2 - z1) + 0.1
+        const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2
+        const w = langsX ? lengte : 0.1, d = langsX ? 0.1 : lengte
+        blok(w, y1 - y0, d, muurMateriaal(lengte, y1 - y0, y0), cx, (y0 + y1) / 2, cz)
+        if (y0 === 0) voegObstakelToe(cx, cz, w, d)
+      }
+      muur(ZAAL.minX, ZAAL.minZ, ZAAL.maxX, ZAAL.minZ) // noord
+      muur(ZAAL.minX, ZAAL.maxZ, ZAAL.maxX, ZAAL.maxZ) // zuid
+      // De muren van de witte zaal (schilderijen, tijdlijn, foto's) zijn glad wit
+      // gepleisterd in plaats van baksteen. De videoruimte blijft donker.
+      {
+        const pleisterMat = new THREE.MeshStandardMaterial({ color: '#f3f2ef', roughness: 0.95 })
+        const pleister = (b, h, x, y, z, ry) => {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(b, h), pleisterMat)
+          m.position.set(x, y, z)
+          m.rotation.y = ry
+          m.receiveShadow = true
+          scene.add(m)
+        }
+        const van = LIGGER_X - 0.4, b = ZAAL.maxX - van, d = 0.051
+        pleister(b, HOOGTE, van + b / 2, HOOGTE / 2, ZAAL.maxZ - d, Math.PI)   // zuid
+        pleister(b, HOOGTE, van + b / 2, HOOGTE / 2, ZAAL.minZ + d, 0)         // noord
+        // Oost, rond de deuropening van de uitgang
+        const deurA = UITGANG_Z - DEUR, deurB = UITGANG_Z + DEUR
+        pleister(deurA - ZAAL.minZ, HOOGTE, ZAAL.maxX - d, HOOGTE / 2, (ZAAL.minZ + deurA) / 2, -Math.PI / 2)
+        pleister(ZAAL.maxZ - deurB, HOOGTE, ZAAL.maxX - d, HOOGTE / 2, (deurB + ZAAL.maxZ) / 2, -Math.PI / 2)
+        pleister(DEUR * 2, HOOGTE - DEURHOOGTE, ZAAL.maxX - d, (HOOGTE + DEURHOOGTE) / 2, UITGANG_Z, -Math.PI / 2)
+      }
+      muur(ZAAL.minX, ZAAL.minZ, ZAAL.minX, ZAAL.maxZ) // west
+      // Oostmuur met de deuropening van de uitgang
+      muur(ZAAL.maxX, ZAAL.minZ, ZAAL.maxX, UITGANG_Z - DEUR)
+      muur(ZAAL.maxX, UITGANG_Z + DEUR, ZAAL.maxX, ZAAL.maxZ)
+      muur(ZAAL.maxX, UITGANG_Z - DEUR, ZAAL.maxX, UITGANG_Z + DEUR, DEURHOOGTE, HOOGTE)
+
+      // ---------------------------------------------------------------------
+      // Plafond. Oostelijk deel: witte planken op balken, met lichtkoepels.
+      // Westelijk deel (achter de ligger): lager en vlak, met inbouwspots.
+      // ---------------------------------------------------------------------
+      const plafondVorm = new THREE.Shape()
+      plafondVorm.moveTo(LIGGER_X, ZAAL.minZ)
+      plafondVorm.lineTo(ZAAL.maxX, ZAAL.minZ)
+      plafondVorm.lineTo(ZAAL.maxX, ZAAL.maxZ)
+      plafondVorm.lineTo(LIGGER_X, ZAAL.maxZ)
+      plafondVorm.closePath()
+      DAKRAMEN.forEach(r => {
+        const gat = new THREE.Path()
+        gat.moveTo(r.minX, r.minZ)
+        gat.lineTo(r.minX, r.maxZ)
+        gat.lineTo(r.maxX, r.maxZ)
+        gat.lineTo(r.maxX, r.minZ)
+        gat.closePath()
+        plafondVorm.holes.push(gat)
+      })
+      const hoogPlafond = new THREE.Mesh(new THREE.ShapeGeometry(plafondVorm), plafondMat)
+      hoogPlafond.rotation.x = Math.PI / 2   // y van de vorm wordt z, de voorkant kijkt omlaag
+      hoogPlafond.position.y = HOOGTE
+      scene.add(hoogPlafond)
+
+      const laagB = LIGGER_X - ZAAL.minX
+      // Videoruimte achter het gordijn: donker, zodat het scherm goed uitkomt
+      // Akoestische wandpanelen: verticale stoffen panelen van 60 cm met donkere naden
+      const PANEEL_B = 0.6
+      const paneelTex = canvasTextuur(256, 512, (ctx, w, h) => {
+        ctx.fillStyle = '#2a292c'; ctx.fillRect(0, 0, w, h)
+        // Geweven stof: fijne horizontale en verticale draadjes
+        for (let i = 0; i < 6000; i++) {
+          const t = 30 + Math.random() * 22
+          ctx.fillStyle = `rgba(${t},${t},${t + 3},.6)`
+          Math.random() > 0.5 ? ctx.fillRect(Math.random() * w, Math.random() * h, 3, 1) : ctx.fillRect(Math.random() * w, Math.random() * h, 1, 3)
+        }
+        // Naad tussen de panelen, met een lichtrandje
+        ctx.fillStyle = '#0d0c0e'; ctx.fillRect(0, 0, 5, h)
+        ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(5, 0, 2, h)
+      })
+      const paneelReliëf = canvasTextuur(64, 64, (ctx, w, h) => {
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
+        ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 2, h)
+      })
+      function paneelMateriaal(lengte, hoogte) {
+        const map = paneelTex.clone(), bumpMap = paneelReliëf.clone()
+        ;[map, bumpMap].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(lengte / PANEEL_B, hoogte / 1.2); t.needsUpdate = true })
+        return new THREE.MeshStandardMaterial({ map, bumpMap, bumpScale: 3, roughness: 1 })
+      }
+      // Donker tapijt met een fijne korrel
+      const tapijtTex = canvasTextuur(512, 512, (ctx, w, h) => {
+        ctx.fillStyle = '#1c1b1e'; ctx.fillRect(0, 0, w, h)
+        for (let i = 0; i < 26000; i++) {
+          const t = 18 + Math.random() * 26
+          ctx.fillStyle = `rgba(${t},${t},${t + 2},.7)`
+          ctx.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5)
+        }
+      })
+      tapijtTex.wrapS = tapijtTex.wrapT = THREE.RepeatWrapping
+      tapijtTex.repeat.set(4, 6)
+      const donkerKamerMat = new THREE.MeshStandardMaterial({ color: '#19181b', roughness: 0.95 })
+      const donkerVloerMat = new THREE.MeshStandardMaterial({ map: tapijtTex, bumpMap: tapijtTex, bumpScale: 1.5, roughness: 1 })
+      const laagPlafond = new THREE.Mesh(new THREE.PlaneGeometry(laagB, zaalD), donkerKamerMat)
+      laagPlafond.rotation.x = Math.PI / 2
+      laagPlafond.position.set(ZAAL.minX + laagB / 2, LAAG_PLAFOND, 0)
+      scene.add(laagPlafond)
+      // Donkere bekleding over de muren en de vloer tussen de westmuur en het gordijn
+      {
+        const tot = LIGGER_X - 0.4   // = de lijn van het gordijn
+        const b = tot - ZAAL.minX, h = LAAG_PLAFOND
+        const vlak = (w, hh, x, y, z, rx, ry, mat = paneelMateriaal(w, hh)) => {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), mat)
+          m.position.set(x, y, z); m.rotation.set(rx, ry, 0)
+          m.receiveShadow = true
+          scene.add(m)
+        }
+        vlak(zaalD - 0.1, h, ZAAL.minX + 0.052, h / 2, 0, 0, Math.PI / 2)                    // west
+        vlak(b - 0.05, h, ZAAL.minX + b / 2, h / 2, ZAAL.minZ + 0.052, 0, 0)                  // noord
+        vlak(b - 0.05, h, ZAAL.minX + b / 2, h / 2, ZAAL.maxZ - 0.052, 0, Math.PI)            // zuid
+        vlak(b, zaalD, ZAAL.minX + b / 2, 0.003, 0, -Math.PI / 2, 0, donkerVloerMat)          // vloer
+      }
+      // Inbouwspots in het lage plafond
+      for (let x = ZAAL.minX + 1; x < LIGGER_X - 0.5; x += 1.25) {
+        for (let z = ZAAL.minZ + 1; z < ZAAL.maxZ; z += 2) {
+          const spotje = new THREE.Mesh(new THREE.CircleGeometry(0.065, 20), new THREE.MeshBasicMaterial({ color: '#4a4640' }))
+          spotje.rotation.x = Math.PI / 2
+          spotje.position.set(x, LAAG_PLAFOND - 0.004, z)
+          scene.add(spotje)
+        }
+      }
+
+      // Plafondbalken: om de halve meter, onderbroken waar een lichtkoepel zit
+      for (let z = ZAAL.minZ + 0.25; z < ZAAL.maxZ; z += 0.5) {
+        let stukken = [[LIGGER_X, ZAAL.maxX]]
+        DAKRAMEN.forEach(r => {
+          if (z < r.minZ - 0.05 || z > r.maxZ + 0.05) return
+          stukken = stukken.flatMap(([a, b]) => (b <= r.minX || a >= r.maxX ? [[a, b]] : [[a, r.minX], [r.maxX, b]]))
+        })
+        stukken.filter(([a, b]) => b - a > 0.05).forEach(([a, b]) => {
+          plafondBlok(b - a, BALK_H, 0.07, plafondMat, (a + b) / 2, HOOGTE - BALK_H / 2, z)
+        })
+      }
+
+      // Lichtkoepels: een witte schacht naar boven met helder glas, en een
+      // raamwerk van balken rond de opening
+      const schachtMat = new THREE.MeshBasicMaterial({ color: '#eef0f1', side: THREE.BackSide, toneMapped: false })
+      const glasMat = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.BackSide, toneMapped: false })
+      const geenMat = new THREE.MeshBasicMaterial({ visible: false })
+      const roedeMat = new THREE.MeshBasicMaterial({ color: '#d5d8da', toneMapped: false })
+      const SCHACHT_H = 0.9
+      DAKRAMEN.forEach(r => {
+        const b = r.maxX - r.minX, d = r.maxZ - r.minZ
+        const cx = (r.minX + r.maxX) / 2, cz = (r.minZ + r.maxZ) / 2
+        // Volgorde van de zijden: +x, -x, boven, onder, +z, -z
+        const schacht = new THREE.Mesh(new THREE.BoxGeometry(b, SCHACHT_H, d), [schachtMat, schachtMat, glasMat, geenMat, schachtMat, schachtMat])
+        schacht.position.set(cx, HOOGTE + SCHACHT_H / 2, cz)
+        scene.add(schacht)
+        // Roeden in het glas
+        for (let i = 1; i < 4; i++) plafondBlok(0.04, 0.04, d, roedeMat, r.minX + (b * i) / 4, HOOGTE + SCHACHT_H - 0.03, cz)
+        plafondBlok(b, 0.04, 0.04, roedeMat, cx, HOOGTE + SCHACHT_H - 0.03, cz)
+        // Raamwerk rond de opening
+        plafondBlok(b + 0.14, BALK_H, 0.07, plafondMat, cx, HOOGTE - BALK_H / 2, r.minZ - 0.035)
+        plafondBlok(b + 0.14, BALK_H, 0.07, plafondMat, cx, HOOGTE - BALK_H / 2, r.maxZ + 0.035)
+        plafondBlok(0.07, BALK_H, d, plafondMat, r.minX - 0.035, HOOGTE - BALK_H / 2, cz)
+        plafondBlok(0.07, BALK_H, d, plafondMat, r.maxX + 0.035, HOOGTE - BALK_H / 2, cz)
+        // Daglicht dat door de koepel naar binnen valt
+        const daglicht = new THREE.PointLight('#ffffff', 2.2, 9, 1.6)
+        daglicht.position.set(cx, HOOGTE - 0.1, cz)
+        scene.add(daglicht)
+      })
+
+      // Lange tl-lijnen onder de balken, langs de lichtkoepels
+      ;[-3.9, -0.7, 0.7, 3.9].forEach(z => {
+        plafondBlok(4.9, 0.03, 0.09, witMat, 2.4, HOOGTE - BALK_H - 0.015, z)
+        plafondBlok(4.86, 0.03, 0.06, lichtMat, 2.4, HOOGTE - BALK_H - 0.045, z)
+      })
+
+      // Ligger met gietijzeren kolommen eronder
+      plafondBlok(0.3, HOOGTE - LAAG_PLAFOND + 0.07, zaalD, plafondMat, LIGGER_X, (HOOGTE + LAAG_PLAFOND - 0.07) / 2, 0)
+      const LIGGER_ONDER = LAAG_PLAFOND - 0.07
+      KOLOMMEN_Z.forEach(z => {
+        const kolom = new THREE.Group()
+        const deel = (rBoven, rOnder, h, y) => {
+          const m = new THREE.Mesh(new THREE.CylinderGeometry(rBoven, rOnder, h, 28), kolomMat)
+          m.position.y = y
+          m.castShadow = m.receiveShadow = true
+          kolom.add(m)
+        }
+        deel(0.085, 0.095, LIGGER_ONDER, LIGGER_ONDER / 2)       // schacht
+        deel(0.12, 0.135, 0.32, 0.16)                            // voet
+        deel(0.105, 0.12, 0.05, 0.345)
+        deel(0.105, 0.105, 0.06, LIGGER_ONDER - 0.5)             // ring
+        deel(0.135, 0.09, 0.14, LIGGER_ONDER - 0.12)            // kapiteel
+        deel(0.16, 0.16, 0.05, LIGGER_ONDER - 0.025)
+        kolom.position.set(LIGGER_X, 0, z)
+        scene.add(kolom)
+        voegObstakelToe(LIGGER_X, z, 0.24, 0.24)
+      })
+
+      // Twee fluwelen gordijndelen, laag samengenomen zoals een klassiek theatergordijn.
+      const GORDIJN_X = LIGGER_X - 0.4
+      const gordijnMat = new THREE.MeshPhysicalMaterial({
+        color: '#70091b', roughness: 0.88, side: THREE.DoubleSide,
+        sheen: 1, sheenColor: new THREE.Color('#c52c45'), sheenRoughness: 0.65,
+      })
+      // Binnenrand van een gordijndeel (afstand tot het midden) op een hoogte.
+      // open = 0: de delen hangen dicht bij elkaar; open = 1: wijd open.
+      const gordijnRand = (hoogte, open = 0) => {
+        const t = THREE.MathUtils.clamp((hoogte - 0.62) / (LAAG_PLAFOND - 0.62), 0, 1)
+        if (hoogte < 0.62) return 0.55 + 0.4 * Math.sin(hoogte / 0.62 * Math.PI / 2)
+        const dicht = 0.015 + 0.94 * Math.pow(1 - t, 3.6)  // kleinere kier: de delen hangen dichter bij elkaar
+        const wijd = 0.12 + 1.1 * Math.pow(1 - t, 1.3)
+        return THREE.MathUtils.lerp(dicht, wijd, open)
+      }
+      const gordijnDelen = []
+      // Waar het rechte zijstuk overgaat in het opgebonden binnendeel (afstand tot het midden)
+      const GORDIJN_S = 1.35
+      for (const kant of [-1, 1]) {
+        // De brede zijstukken hangen recht. Alleen het smalle binnendeel
+        // wordt opzij genomen, zodat de stof niet over de hele zaal uitrekt.
+        const zijGeo = new THREE.PlaneGeometry(1, 1, 520, 24)
+        const zijPunten = zijGeo.attributes.position
+        for (let i = 0; i < zijPunten.count; i++) {
+          const u = zijPunten.getX(i) + 0.5
+          const v = zijPunten.getY(i) + 0.5
+          const z = GORDIJN_S + u * (ZAAL.maxZ - 0.04 - GORDIJN_S)
+          // Diepe hoofdplooien om de 12 cm, met kleinere plooitjes ertussen
+          const zz = (z - GORDIJN_S) * Math.PI * 2
+          zijPunten.setXYZ(i, GORDIJN_X + Math.cos(zz / 0.12) * 0.07 + Math.cos(zz / 0.05 + 1.3) * 0.018,
+            0.025 + v * (LAAG_PLAFOND - 0.02), kant * z)
+        }
+        zijGeo.computeVertexNormals()
+        const zijDoek = new THREE.Mesh(zijGeo, gordijnMat)
+        zijDoek.castShadow = zijDoek.receiveShadow = true
+        scene.add(zijDoek)
+        const geo = new THREE.PlaneGeometry(1, 1, 200, 70)
+        const punten = geo.attributes.position
+        const uv0 = Float32Array.from({ length: punten.count * 2 }, (_, j) => (j % 2 ? punten.getY(j >> 1) : punten.getX(j >> 1)) + 0.5)
+        // Vorm van het binnendeel opnieuw berekenen voor een bepaalde openheid
+        const vormDoek = (open, tijd = 0, golving = 0) => {
+          for (let i = 0; i < punten.count; i++) {
+            const u = uv0[i * 2], v = uv0[i * 2 + 1]
+            const y = v * (LAAG_PLAFOND - 0.02)
+            const binnen = gordijnRand(y, open)
+            const z = kant * THREE.MathUtils.lerp(GORDIJN_S, binnen, u)
+            // De plooien volgen de gebogen stof naar het lage verzamelpunt.
+            const bijBand = Math.exp(-Math.pow((y - 0.62) / 0.22, 2))
+            const fase = u * Math.PI * 38 + Math.sin(v * Math.PI) * u * 0.4
+            const golf = Math.cos(fase) * 0.8 + Math.cos(fase * 2.3 + 0.7) * 0.2
+            // Bij de rekker zit de stof strak samen: bijna geen plooidiepte meer
+            const plooi = golf * (0.012 + 0.078 * (1 - bijBand))
+            // Gaat het gordijn open, dan bolt de stof iets meer uit
+            const buik = Math.sin(u * Math.PI) * (0.12 + open * 0.1) * (1 - bijBand)
+            // Golving: een rimpeling die van de binnenrand naar buiten loopt en
+            // onderaan het sterkst is (de stof hangt daar vrij), plus een
+            // heel zachte zwaai in rust. Bovenaan zit de stof vast aan de rail.
+            const vrij = (1 - v) * (1 - bijBand) * u
+            const rimpel = Math.sin(u * 9 - tijd * 7 + v * 2) * golving * 0.09 * vrij
+            const zwaai = Math.sin(tijd * 0.9 + u * 2.5 + kant) * 0.012 * vrij
+            // De binnenrand zwiept wat mee in de breedte
+            const zwiep = Math.sin(tijd * 5 - v * 3) * golving * 0.06 * vrij
+            punten.setXYZ(i, GORDIJN_X + plooi + buik + rimpel + zwaai, y + 0.025, z + kant * zwiep)
+          }
+          punten.needsUpdate = true
+          geo.computeVertexNormals()
+        }
+        vormDoek(0)
+        gordijnDelen.push(vormDoek)
+        const doek = new THREE.Mesh(geo, gordijnMat)
+        doek.castShadow = doek.receiveShadow = true
+        scene.add(doek)
+        // Een smalle stoffen band rond het samengenomen deel.
+        const bandPad = new THREE.CatmullRomCurve3(Array.from({ length: 49 }, (_, i) => {
+          const hoek = i / 48 * Math.PI * 2
+          return new THREE.Vector3(GORDIJN_X + Math.cos(hoek) * 0.045,
+            0.64 + Math.sin(hoek) * 0.012, kant * (GORDIJN_S - 0.065) + Math.sin(hoek) * 0.075)
+        }), true)
+        const band = new THREE.Mesh(new THREE.TubeGeometry(bandPad, 64, 0.014, 8, true), gordijnMat)
+        band.castShadow = true
+        scene.add(band)
+        // Botsing volgt de opening op ooghoogte; de doorgang blijft begaanbaar.
+        // Iets ruimer dan het dichte gordijn: als je er bent, staat het toch al half open
+        const rand = gordijnRand(OOGHOOGTE, 0.9)
+        voegObstakelToe(GORDIJN_X, kant * (5 + rand) / 2, 0.32, 5 - rand)
+      }
+
+      // ---------------------------------------------------------------------
+      // Licht: iets gedimd, met daglicht en gerichte spots op de werken
+      // ---------------------------------------------------------------------
+      scene.add(new THREE.HemisphereLight('#ffffff', '#e9e9e5', 1.15))
+      scene.add(new THREE.AmbientLight('#ffffff', 0.3))
+      const zon = new THREE.DirectionalLight('#ffffff', 0.6)
+      zon.position.set(3, 9, 1.5)
+      zon.target.position.set(1.5, 0, 0)
+      zon.castShadow = true
+      zon.shadow.mapSize.set(2048, 2048)
+      zon.shadow.radius = 6
+      zon.shadow.bias = -0.0005
+      Object.assign(zon.shadow.camera, { left: -10, right: 10, top: 8, bottom: -8, near: 1, far: 20 })
+      scene.add(zon, zon.target)
+
+      // ---------------------------------------------------------------------
+      // Schilderijen: doeken zonder lijst, recht op de bakstenen muur, elk met
+      // een spotje aan het plafond
+      // ---------------------------------------------------------------------
+      // Zet een plek op een muur om naar wereldpositie + draaiing.
+      // pos = x (noord/zuid) of z (west/oost); afstand = hoe ver van de muur.
+      function opMuur(muur, pos, y, afstand) {
+        const a = afstand + 0.05
+        if (muur === 'noord') return { p: new THREE.Vector3(pos, y, ZAAL.minZ + a), ry: 0 }
+        if (muur === 'zuid') return { p: new THREE.Vector3(pos, y, ZAAL.maxZ - a), ry: Math.PI }
+        if (muur === 'west') return { p: new THREE.Vector3(ZAAL.minX + a, y, pos), ry: Math.PI / 2 }
+        return { p: new THREE.Vector3(ZAAL.maxX - a, y, pos), ry: -Math.PI / 2 }
+      }
+      // Onderkant van het plafond op een bepaalde x (laag deel of onder de balken)
+      const plafondOnder = x => (x < LIGGER_X ? LAAG_PLAFOND : HOOGTE - BALK_H)
+
+      const textureLoader = new THREE.TextureLoader()
+      const DOEK_DIKTE = 0.035
+      const DOEK_MIDDEN = 1.5   // hoogte van het midden van elk doek
+      const doekRand = new THREE.MeshStandardMaterial({ color: '#f1efe9', roughness: 0.9 })
+
+      // Spotje aan het plafond dat op een punt op de muur schijnt
+      function spotOp(muurNaam, pos, doel) {
+        const spotPos = opMuur(muurNaam, pos, 0, 1.3).p
+        spotPos.y = plafondOnder(spotPos.x) - 0.1
+        const armatuur = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.14, 16), witMat)
+        armatuur.position.copy(spotPos)
+        armatuur.lookAt(doel)
+        armatuur.rotateX(Math.PI / 2)
+        scene.add(armatuur)
+        plafondBlok(0.02, 0.1, 0.02, witMat, spotPos.x, spotPos.y + 0.06, spotPos.z)
+        const spot = new THREE.SpotLight('#fff4e4', 6, 6, Math.PI / 6, 0.7, 1.5)
+        spot.position.copy(spotPos)
+        spot.target.position.copy(doel)
+        scene.add(spot, spot.target)
+      }
+
+      // Elke muur wordt gelijk verdeeld: tussen de schilderijen (en aan de uiteinden)
+      // komt telkens evenveel witruimte. 'pos' bepaalt alleen de volgorde.
+      // Zone per muur waarbinnen de werken hangen (x van links naar rechts)
+      const SCHILDER_ZONE = { noord: [LIGGER_X - 0.1, ZAAL.maxX - 0.3], zuid: [LIGGER_X - 0.1, ZAAL.maxX - 0.3] }
+      const perMuur = {}
+      const kaderWit = new THREE.MeshStandardMaterial({ color: '#f7f6f2', roughness: 0.6 })
+      // Licht eikenhout, zoals de lijsten in een klassieke salon-ophanging
+      const lijstHout = new THREE.MeshStandardMaterial({ color: '#b48654', roughness: 0.5 })
+      const klemMat = new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.35, metalness: 0.3 })
+      const klemMetaal = new THREE.MeshStandardMaterial({ color: '#aaa', roughness: 0.3, metalness: 0.7 })
+      AFBEELDINGEN.forEach(({ afbeelding, muur: muurNaam, pos, h, draai = 0, kader = false, lijst = false, mat = false, klem = false, dun = false, diepte = 0, plek = null, y = 0 }) => {
+        const voorkant = new THREE.MeshStandardMaterial({ color: '#f1efe9', roughness: 0.85 })
+        const doek = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), [doekRand, doekRand, doekRand, doekRand, voorkant, doekRand])
+        doek.scale.set(h * 1.4, h, DOEK_DIKTE)
+        doek.castShadow = doek.receiveShadow = true
+        doek.visible = false   // pas tonen als de muur verdeeld is
+        scene.add(doek)
+
+        const geladen = new Promise(klaar => textureLoader.load(encodeURI(afbeelding), geladen => {
+          // draai: -90 = een kwartslag tegen de klok in, 90 = met de klok mee, 180 = ondersteboven
+          let tex = geladen
+          if (draai) {
+            const img = geladen.image, c = document.createElement('canvas')
+            const kwart = Math.abs(draai) === 90
+            c.width = kwart ? img.height : img.width; c.height = kwart ? img.width : img.height
+            const ctx = c.getContext('2d')
+            if (draai === 180) { ctx.translate(c.width, c.height); ctx.rotate(Math.PI) }
+            else if (draai < 0) { ctx.translate(0, c.height); ctx.rotate(-Math.PI / 2) }
+            else { ctx.translate(c.width, 0); ctx.rotate(Math.PI / 2) }
+            ctx.drawImage(img, 0, 0)
+            tex = new THREE.CanvasTexture(c)
+          }
+          tex.colorSpace = THREE.SRGBColorSpace
+          tex.anisotropy = 8
+          // Het doek krijgt de verhouding van de afbeelding: niets wordt bijgesneden
+          doek.scale.x = h * tex.image.width / tex.image.height
+          voorkant.map = tex
+          voorkant.color.set('#ffffff')
+          voorkant.needsUpdate = true
+          klaar()
+        }, undefined, () => { console.warn(`Afbeelding niet gevonden: ${afbeelding}`); klaar() }))
+        ;(perMuur[muurNaam] ??= []).push({ doek, pos, geladen, h, kader, lijst, mat, klem, dun, diepte, plek, y })
+      })
+
+      Object.entries(perMuur).forEach(([muurNaam, werken]) => {
+        Promise.all(werken.map(w => w.geladen)).then(() => {
+          werken.sort((a, b) => a.pos - b.pos)
+          const [van, tot] = SCHILDER_ZONE[muurNaam] || [ZAAL.minZ + 0.5, ZAAL.maxZ - 0.5]
+          // Een kader maakt het werk breder: passe-partout + witte lijst rondom
+          const KADER_RAND = 0.09
+          const LIJST_B = 0.045
+          const breedtes = werken.map(w => w.doek.scale.x + (w.kader ? KADER_RAND * 2 : 0) + (w.lijst ? LIJST_B * 2 : 0))
+          const wit = (tot - van - breedtes.reduce((a, b) => a + b, 0)) / (werken.length + 1)
+          let x = van + wit
+          werken.forEach((w, i) => {
+            // Op de zuidmuur kijk je de andere kant op: daar loopt de volgorde van rechts naar links
+            const midden = x + breedtes[i] / 2
+            // Een vaste plek gaat voor op de automatische verdeling
+            const langs = w.plek ? w.plek[0] : muurNaam === 'zuid' ? van + tot - midden : midden
+            const yMid = w.plek ? w.plek[1] : DOEK_MIDDEN + w.y
+            const MAT = w.mat ? 0.07 : 0
+            const { p, ry } = opMuur(muurNaam, langs, yMid, DOEK_DIKTE / 2 + 0.002 + (w.mat ? 0.012 : 0))
+            w.doek.position.copy(p)
+            w.doek.rotation.y = ry
+            w.doek.visible = true
+            if (w.dun) {
+              // Dunne zwarte lijst, los van de muur op de gegeven diepte, met een
+              // smal witrandje rond het werk; zo lijkt het cluster gelaagd
+              const fb = w.doek.scale.x, fh = w.h, D = 0.02, WR = 0.03
+              const lb = fb + (D + WR) * 2, lh = fh + (D + WR) * 2
+              const g = new THREE.Group()
+              g.position.copy(opMuur(muurNaam, langs, yMid, w.diepte).p)
+              g.rotation.y = ry
+              const achter = new THREE.Mesh(new THREE.BoxGeometry(lb, lh, 0.03), kaderWit)
+              achter.position.z = -0.015
+              achter.castShadow = true
+              g.add(achter)
+              ;[[lb, D, 0, (lh - D) / 2], [lb, D, 0, -(lh - D) / 2], [D, lh, (lb - D) / 2, 0], [D, lh, -(lb - D) / 2, 0]].forEach(([lw, lhh, lx, ly]) => {
+                const lat = new THREE.Mesh(new THREE.BoxGeometry(lw, lhh, 0.035), klemMat)
+                lat.position.set(lx, ly, 0.002)
+                g.add(lat)
+              })
+              scene.add(g)
+              w.doek.position.copy(opMuur(muurNaam, langs, yMid, w.diepte + 0.004).p)
+              w.doek.scale.z = 0.004
+            }
+            if (w.klem) {
+              // Dun karton op het rooster, met twee zwarte klemmen bovenaan
+              w.doek.position.copy(opMuur(muurNaam, langs, yMid, 0.05).p)
+              w.doek.scale.z = 0.006
+              for (const kx of [-1, 1]) {
+                const klemGroep = new THREE.Group()
+                klemGroep.position.copy(opMuur(muurNaam, langs + kx * (w.doek.scale.x / 2 - 0.06), yMid + w.h / 2 - 0.01, 0.055).p)
+                klemGroep.rotation.y = ry
+                const bek = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.035, 0.012), klemMat)
+                const beugel = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.0025, 6, 12, Math.PI), klemMetaal)
+                beugel.position.set(0, 0.024, 0.006)
+                beugel.rotation.x = -0.6
+                klemGroep.add(bek, beugel)
+                scene.add(klemGroep)
+              }
+            }
+            if (w.lijst) {
+              // Smalle lijst in donker eikenhout, iets dieper dan het doek
+              const fb = w.doek.scale.x + MAT * 2, fh = w.h + MAT * 2
+              const lb = fb + LIJST_B * 2, lh = fh + LIJST_B * 2
+              const lijstGroep = new THREE.Group()
+              lijstGroep.position.copy(opMuur(muurNaam, langs, yMid, 0.03).p)
+              lijstGroep.rotation.y = ry
+              ;[[lb, LIJST_B, 0, (lh - LIJST_B) / 2], [lb, LIJST_B, 0, -(lh - LIJST_B) / 2], [LIJST_B, lh, (lb - LIJST_B) / 2, 0], [LIJST_B, lh, -(lb - LIJST_B) / 2, 0]].forEach(([lw, lhh, lx, ly]) => {
+                const lat = new THREE.Mesh(new THREE.BoxGeometry(lw, lhh, 0.06), lijstHout)
+                lat.position.set(lx, ly, 0)
+                lat.castShadow = true
+                lijstGroep.add(lat)
+              })
+              if (w.mat) {
+                // Witte passe-partout achter het werk, binnen de lijst
+                const passe = new THREE.Mesh(new THREE.BoxGeometry(fb, fh, 0.01), kaderWit)
+                passe.position.z = -0.015
+                lijstGroep.add(passe)
+                w.doek.scale.z = 0.006
+              }
+              scene.add(lijstGroep)
+            }
+            if (w.kader) {
+              // Wit kader: een witte plaat (passe-partout) achter de foto en vier latjes rondom
+              const fb = w.doek.scale.x, fh = w.h
+              const kb = fb + KADER_RAND * 2, kh = fh + KADER_RAND * 2
+              const kaderGroep = new THREE.Group()
+              kaderGroep.position.copy(opMuur(muurNaam, langs, DOEK_MIDDEN, 0.01).p)
+              kaderGroep.rotation.y = ry
+              const passe = new THREE.Mesh(new THREE.BoxGeometry(kb, kh, 0.01), kaderWit)
+              passe.position.z = 0.005
+              kaderGroep.add(passe)
+              const LAT = 0.025
+              ;[[kb, LAT, 0, (kh - LAT) / 2], [kb, LAT, 0, -(kh - LAT) / 2], [LAT, kh, (kb - LAT) / 2, 0], [LAT, kh, -(kb - LAT) / 2, 0]].forEach(([lw, lh, lx, ly]) => {
+                const lat = new THREE.Mesh(new THREE.BoxGeometry(lw, lh, 0.04), kaderWit)
+                lat.position.set(lx, ly, 0.02)
+                lat.castShadow = true
+                kaderGroep.add(lat)
+              })
+              scene.add(kaderGroep)
+              // De foto zelf iets naar voren, net voor de passe-partout
+              w.doek.position.copy(opMuur(muurNaam, langs, DOEK_MIDDEN, 0.022).p)
+              w.doek.scale.z = 0.004
+              // Leeg uitlegkaartje onder het kader
+              const kaartje = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.006), kaderWit)
+              kaartje.position.copy(opMuur(muurNaam, langs - (muurNaam === 'zuid' ? -1 : 1) * (kb / 2 - 0.08), DOEK_MIDDEN - kh / 2 - 0.12, 0.004).p)
+              kaartje.rotation.y = ry
+              scene.add(kaartje)
+            }
+            // Geen spot per kleine foto (te veel lichten); die muur krijgt er hieronder een paar
+            if (!w.kader) spotOp(muurNaam, langs, p)
+            x += breedtes[i] + wit
+          })
+          if (werken.some(w => w.kader)) {
+            for (const f of [0.17, 0.5, 0.83]) {
+              const langs = van + (tot - van) * f
+              spotOp(muurNaam, langs, opMuur(muurNaam, langs, DOEK_MIDDEN, 0).p)
+            }
+          }
+        })
+      })
+
+      // Noordwand: een cluster schilderijen met dunne zwarte lijsten op
+      // verschillende diepte, voor dunne verticale staven. Links staat de tafel.
+      {
+        // Spot op de tafel met de mand
+        spotOp('noord', -0.6, new THREE.Vector3(-0.6, 0.8, ZAAL.minZ + 0.35))
+
+        // Dunne zwarte staven van vloer tot plafond, achter het cluster
+        const staafMat = new THREE.MeshStandardMaterial({ color: '#1b1b1b', roughness: 0.4, metalness: 0.4 })
+        const staafH = HOOGTE - BALK_H
+        ;[1.95, 2.55, 3.15, 3.75, 4.35, 4.95, 5.55, 6.1].forEach(x => {
+          const staaf = new THREE.Mesh(new THREE.BoxGeometry(0.012, staafH, 0.012), staafMat)
+          staaf.position.set(x, staafH / 2, ZAAL.minZ + 0.1)
+          staaf.castShadow = true
+          scene.add(staaf)
+        })
+      }
+
+      // ---------------------------------------------------------------------
+      // Ronde tafel midden in de ruimte, 75 cm hoog
+      // ---------------------------------------------------------------------
+      // Witte ronde tafel met centrale voet; het blad blijft op 75 cm.
+      const tafelMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.55 })
+      // Rechthoekige tafel tegen de noordmuur, links van de schilderijen, met de mand erop
+      const tafel = new THREE.Group()
+      // Massief blok, als een lange sokkel
+      const TAFEL_B = 4.5, TAFEL_D = 0.55, TAFEL_H = 0.75
+      const blad = new THREE.Mesh(new THREE.BoxGeometry(TAFEL_B, TAFEL_H, TAFEL_D), tafelMat)
+      blad.position.y = TAFEL_H / 2
+      blad.castShadow = blad.receiveShadow = true
+      tafel.add(blad)
+      const TAFEL_X = -0.5, TAFEL_Z = ZAAL.minZ + 0.05 + TAFEL_D / 2 + 0.05
+      tafel.position.set(TAFEL_X, 0, TAFEL_Z)
+      scene.add(tafel)
+      voegObstakelToe(TAFEL_X, TAFEL_Z, TAFEL_B, TAFEL_D)
+
+      // ---------------------------------------------------------------------
+      // Bezoekers: eenvoudige 3D-figuren zonder gezicht of details, in een
+      // stilstaande houding, allemaal in donker zwart.
+      // houding: 'lopen' of 'staan'. De figuur kijkt naar lokale +z; ry draait haar.
+      // ---------------------------------------------------------------------
+      function zetFiguur({ x, z, ry, kleur = '#2b2b2b', houding = 'staan', schaal = 1, knot = false }) {
+        const mat = new THREE.MeshStandardMaterial({ color: kleur, roughness: 0.7 })
+        const figuur = new THREE.Group()
+        const deel = (geo, px, py, pz, rx = 0, ouder = figuur) => {
+          const m = new THREE.Mesh(geo, mat)
+          m.position.set(px, py, pz)
+          m.rotation.x = rx
+          m.castShadow = true
+          ouder.add(m)
+          return m
+        }
+        deel(new THREE.SphereGeometry(0.1, 24, 16), 0, 1.56, 0.01).scale.set(0.9, 1.1, 1)
+        if (knot) deel(new THREE.SphereGeometry(0.05, 16, 12), 0, 1.6, -0.09)
+        deel(new THREE.CylinderGeometry(0.04, 0.045, 0.1, 12), 0, 1.44, 0)
+        deel(new THREE.CapsuleGeometry(0.15, 0.32, 6, 18), 0, 1.15, 0).scale.set(1, 1, 0.7)
+        const been = (bx, heup, knie) => {
+          const g = new THREE.Group()
+          g.position.set(bx, 0.9, 0)
+          g.rotation.x = heup
+          figuur.add(g)
+          deel(new THREE.CapsuleGeometry(0.07, 0.32, 4, 12), 0, -0.22, 0, 0, g)
+          const k = new THREE.Group()
+          k.position.y = -0.44
+          k.rotation.x = knie
+          g.add(k)
+          deel(new THREE.CapsuleGeometry(0.055, 0.32, 4, 12), 0, -0.21, 0, 0, k)
+          deel(new THREE.BoxGeometry(0.08, 0.06, 0.2), 0, -0.43, 0.05, -heup - knie, k)
+        }
+        const arm = (ax, zwaai, elleboog = -0.3) => {
+          const g = new THREE.Group()
+          g.position.set(ax, 1.38, 0)
+          g.rotation.x = zwaai
+          figuur.add(g)
+          deel(new THREE.CapsuleGeometry(0.045, 0.24, 4, 10), 0, -0.16, 0, 0, g)
+          const e = new THREE.Group()
+          e.position.y = -0.32
+          e.rotation.x = elleboog
+          g.add(e)
+          deel(new THREE.CapsuleGeometry(0.04, 0.22, 4, 10), 0, -0.14, 0, 0, e)
+        }
+        if (houding === 'lopen') {
+          been(-0.08, -0.35, 0.15); been(0.08, 0.32, 0.35)
+          arm(-0.2, 0.35); arm(0.2, -0.35)
+        } else {
+          // Rustig staan, gewicht op één been, handen op de rug
+          been(-0.08, 0.02, 0); been(0.09, -0.06, 0.08)
+          arm(-0.19, 0.25, -0.9); arm(0.19, 0.25, -0.9)
+        }
+        figuur.scale.setScalar(schaal)
+        figuur.position.set(x, 0, z)
+        figuur.rotation.y = ry
+        scene.add(figuur)
+        voegObstakelToe(x, z, 0.45 * schaal, 0.5 * schaal)
+      }
+      // De donkere wandelende vrouw, richting de schilderijen
+      zetFiguur({ x: 1.6, z: 2.3, ry: Math.PI, kleur: '#2b2b2b', houding: 'lopen', knot: true })
+      // Andere bezoekers
+      zetFiguur({ x: 3.7, z: -3.35, ry: Math.PI })                              // bekijkt de schilderijen
+      zetFiguur({ x: 5.35, z: 1.2, ry: Math.PI / 2, knot: true })               // leest de tijdlijn
+      zetFiguur({ x: 0.3, z: 3.9, ry: 0, schaal: 0.98 })                       // bij de foto's
+      zetFiguur({ x: -0.2, z: -3.7, ry: Math.PI, knot: true, schaal: 0.96 })    // bij de doos op tafel
+      zetFiguur({ x: 4.1, z: 1.6, ry: -Math.PI / 2 - 0.5, schaal: 0.65 })       // een kind bij de paspop
+      zetFiguur({ x: 4.6, z: -1.2, ry: Math.PI * 0.75, houding: 'lopen' })      // loopt door de zaal
+
+      // Ronde zitbank midden in de zaal, helemaal in grijze suède: per segment
+      // twee gestapelde kussens, en in het midden een lage ronde rugleuning.
+      // Je kunt aan alle kanten gaan zitten, met je rug naar het midden.
+      let poefZitjes = []
+      {
+        const BANK = new THREE.Vector3(2.4, 0, 0)
+        const R_UIT = 1.4, R_RUG = 0.84, R_GAT = 0.56, SEG = 8, GAT = 0.03
+        // Kurk: warm beige met fijne donkere en lichte korrels
+        const kurkTex = canvasTextuur(512, 512, (ctx, w, h) => {
+          ctx.fillStyle = '#c69c62'; ctx.fillRect(0, 0, w, h)
+          for (let i = 0; i < 14000; i++) {
+            const t = Math.random()
+            ctx.fillStyle = t < 0.5 ? `rgba(120,80,40,${0.15 + Math.random() * 0.35})` : `rgba(235,205,160,${0.15 + Math.random() * 0.35})`
+            ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3)
+          }
+        })
+        kurkTex.wrapS = kurkTex.wrapT = THREE.RepeatWrapping
+        kurkTex.repeat.set(2, 1)
+        // Grijze suède
+        const stofTex = canvasTextuur(256, 256, (ctx, w, h) => {
+          ctx.fillStyle = '#8e8e8b'; ctx.fillRect(0, 0, w, h)
+          // Suède: zachte vlekken en korte strijkstrepen
+          for (let i = 0; i < 60; i++) {
+            ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,.018)' : 'rgba(0,0,0,.022)'
+            ctx.beginPath(); ctx.ellipse(Math.random() * w, Math.random() * h, 10 + Math.random() * 40, 3 + Math.random() * 8, Math.random() * 0.4, 0, Math.PI * 2); ctx.fill()
+          }
+          for (let i = 0; i < 9000; i++) {
+            ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.07)'
+            ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1)
+          }
+        })
+        stofTex.wrapS = stofTex.wrapT = THREE.RepeatWrapping
+        const kurkMat = new THREE.MeshStandardMaterial({ map: kurkTex, bumpMap: kurkTex, bumpScale: 1.5, roughness: 0.95 })
+        const stofMat = new THREE.MeshStandardMaterial({ map: stofTex, roughness: 1, sheen: 0.4 })
+        // Ringsegment (van rIn tot rUit, tussen hoek a0 en a1) als vorm in het xz-vlak
+        const ringStuk = (rIn, rUit, a0, a1) => {
+          const v = new THREE.Shape()
+          v.absarc(0, 0, rUit, a0, a1, false)
+          v.absarc(0, 0, rIn, a1, a0, true)
+          v.closePath()
+          return v
+        }
+        // Liggend uitgerekt blok: de vorm wordt -90° gekanteld zodat hij plat ligt
+        const blok3d = (vorm, hoogte, mat, y, bevel) => {
+          const geo = new THREE.ExtrudeGeometry(vorm, { depth: hoogte - bevel * 2, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 4, curveSegments: 24 })
+          const m = new THREE.Mesh(geo, mat)
+          m.rotation.x = -Math.PI / 2
+          m.position.y = y + bevel
+          m.castShadow = m.receiveShadow = true
+          return m
+        }
+        const bank = new THREE.Group()
+        bank.position.copy(BANK)
+        // Twee gestapelde kussens per segment (onder en zitting) en een lage ronde rugleuning
+        const SOKKEL_H = 0.2, KUSSEN_H = 0.18, RUG_H = 0.26
+        const kussens = []
+        for (let i = 0; i < SEG; i++) {
+          const a0 = (i / SEG) * Math.PI * 2 + GAT, a1 = ((i + 1) / SEG) * Math.PI * 2 - GAT
+          bank.add(blok3d(ringStuk(R_GAT + 0.02, R_UIT - 0.03, a0, a1), SOKKEL_H, stofMat, 0.015, 0.045))
+          const kussen = blok3d(ringStuk(R_RUG - 0.02, R_UIT, a0, a1), KUSSEN_H, stofMat, 0.015 + SOKKEL_H, 0.05)
+          bank.add(kussen)
+          kussens.push(kussen)
+          // Rugleuning: dubbel zoveel smalle, bolle stroken
+          for (const half of [0, 1]) {
+            const b0 = a0 + (a1 - a0) * half / 2 + GAT * 0.8, b1 = a0 + (a1 - a0) * (half + 1) / 2 - GAT * 0.8
+            bank.add(blok3d(ringStuk(R_GAT, R_RUG, b0, b1), RUG_H, stofMat, 0.015 + SOKKEL_H, 0.07))
+          }
+        }
+        scene.add(bank)
+        voegObstakelToe(BANK.x, BANK.z, R_UIT * 1.75, R_UIT * 1.75)
+        // Elk zitkussen is een zitplek: klik erop en je zit in het midden ervan,
+        // met de blik naar buiten
+        const zitY = 0.015 + SOKKEL_H + KUSSEN_H
+        // Verhoog in het midden met een paspop in een oud romantisch balletkleed
+        {
+          const VERHOOG_H = 0.5
+          const sokkel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, VERHOOG_H, 48), new THREE.MeshStandardMaterial({ color: '#f1efea', roughness: 0.7 }))
+          sokkel.position.set(BANK.x, VERHOOG_H / 2, BANK.z)
+          sokkel.castShadow = sokkel.receiveShadow = true
+          scene.add(sokkel)
+          const pop = new THREE.Group()
+          pop.position.set(BANK.x, VERHOOG_H, BANK.z)
+          pop.rotation.y = -Math.PI / 2 + 0.4   // naar de ingang van de zaal, iets schuin
+          scene.add(pop)
+
+          // ---- Paspop ----
+          // Linnen met een fijne weving, donker notenhout en messing
+          const linnenTex = canvasTextuur(256, 256, (ctx, w, h) => {
+            ctx.fillStyle = '#d8c7a8'; ctx.fillRect(0, 0, w, h)
+            for (let i = 0; i < w; i += 3) {
+              ctx.fillStyle = `rgba(90,70,40,${0.04 + Math.random() * 0.05})`; ctx.fillRect(i, 0, 1, h)
+              ctx.fillStyle = `rgba(255,250,235,${0.04 + Math.random() * 0.05})`; ctx.fillRect(0, i, w, 1)
+            }
+          })
+          linnenTex.wrapS = linnenTex.wrapT = THREE.RepeatWrapping
+          linnenTex.repeat.set(4, 3)
+          const linnen = new THREE.MeshStandardMaterial({ map: linnenTex, bumpMap: linnenTex, bumpScale: 0.6, roughness: 0.95 })
+          const hout = new THREE.MeshStandardMaterial({ color: '#4a3020', roughness: 0.35, metalness: 0.05 })
+          const messing = new THREE.MeshStandardMaterial({ color: '#b08a4a', roughness: 0.3, metalness: 0.85 })
+          const WAIST = 0.95   // hoogte van de taille boven het verhoog
+
+          // Voet: gedraaide houten poten (driepoot) met messing dopjes, en een stang
+          for (let i = 0; i < 3; i++) {
+            const a = i * Math.PI * 2 / 3 + 0.3
+            const poot = new THREE.Group()
+            poot.position.set(0, 0.2, 0)
+            poot.rotation.y = -a
+            const stuk = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.016, 0.3, 10), hout)
+            stuk.position.set(0.12, -0.1, 0)
+            stuk.rotation.z = 1.05
+            const dop = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), messing)
+            dop.position.set(0.25, -0.18, 0)
+            poot.add(stuk, dop)
+            pop.add(poot)
+          }
+          const stang = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, WAIST - 0.15, 12), messing)
+          stang.position.y = 0.2 + (WAIST - 0.35) / 2
+          pop.add(stang)
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.04, 14), hout)
+          ring.position.y = 0.22
+          pop.add(ring)
+
+          // Romp: een vervormde draaivorm met heupen, smalle taille, buste en
+          // afgeschuinde schouders. Platter van voor naar achter.
+          const profiel = [
+            [0.0, -0.2], [0.13, -0.2], [0.155, -0.14], [0.16, -0.06], [0.135, 0.02], [0.112, 0.08], [0.118, 0.15],
+            [0.14, 0.23], [0.152, 0.29], [0.148, 0.34], [0.135, 0.39], [0.11, 0.425], [0.07, 0.44], [0.045, 0.45], [0.042, 0.52], [0.0, 0.52],
+          ].map(([r, y]) => new THREE.Vector2(r, y))
+          const rompGeo = new THREE.LatheGeometry(profiel, 64)
+          const rp = rompGeo.attributes.position
+          for (let i = 0; i < rp.count; i++) {
+            let x = rp.getX(i), y = rp.getY(i), z = rp.getZ(i)
+            // Buste naar voren (+z), rug vlakker, schouders breder dan diep
+            const voor = z > 0 ? 1 : 0
+            const buste = Math.exp(-Math.pow((y - 0.29) / 0.06, 2)) * voor * 0.035 * (1 - Math.abs(x) / 0.16)
+            const schouder = Math.exp(-Math.pow((y - 0.41) / 0.04, 2))
+            x *= 1 + schouder * 0.35
+            z = z * (0.72 - schouder * 0.1) + buste
+            rp.setXYZ(i, x, y, z)
+          }
+          rompGeo.computeVertexNormals()
+          const romp = new THREE.Mesh(rompGeo, linnen)
+          romp.position.y = WAIST
+          romp.castShadow = true
+          pop.add(romp)
+          // Nek-dop van hout met een messing knopje
+          const nekdop = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.045, 0.025, 20), hout)
+          nekdop.position.y = WAIST + 0.53
+          const knop = new THREE.Mesh(new THREE.SphereGeometry(0.018, 14, 10), messing)
+          knop.position.y = WAIST + 0.555
+          pop.add(nekdop, knop)
+
+          // ---- Balletkleed ----
+          // Vergeeld ivoren satijn voor het lijfje, met een punt (basque) vooraan
+          const satijn = new THREE.MeshStandardMaterial({ color: '#efe2c6', roughness: 0.35, metalness: 0.08 })
+          const lijfProfiel = [[0.118, -0.02], [0.115, 0.08], [0.122, 0.15], [0.145, 0.23], [0.158, 0.29], [0.153, 0.33]].map(([r, y]) => new THREE.Vector2(r + 0.006, y))
+          const lijfGeo = new THREE.LatheGeometry(lijfProfiel, 64)
+          const lp = lijfGeo.attributes.position
+          for (let i = 0; i < lp.count; i++) {
+            let x = lp.getX(i), y = lp.getY(i), z = lp.getZ(i)
+            const voor = z > 0 ? 1 : 0
+            const buste = Math.exp(-Math.pow((y - 0.29) / 0.06, 2)) * voor * 0.037 * (1 - Math.abs(x) / 0.17)
+            // Basque: de onderrand loopt vooraan in een punt naar beneden
+            if (y < 0) y -= Math.max(0, 1 - Math.abs(x) / 0.06) * voor * 0.05
+            lp.setXYZ(i, x, y, z * 0.74 + buste)
+          }
+          lijfGeo.computeVertexNormals()
+          const lijfje = new THREE.Mesh(lijfGeo, satijn)
+          lijfje.position.y = WAIST
+          lijfje.castShadow = true
+          pop.add(lijfje)
+          // Halsrand: een rij kleine parels langs de bovenrand
+          const parelMat = new THREE.MeshStandardMaterial({ color: '#f6efe2', roughness: 0.2, metalness: 0.1 })
+          for (let i = 0; i < 36; i++) {
+            const a = i / 36 * Math.PI * 2
+            const parel = new THREE.Mesh(new THREE.SphereGeometry(0.006, 8, 6), parelMat)
+            parel.position.set(Math.cos(a) * 0.16, WAIST + 0.333, Math.sin(a) * 0.16 * 0.74 + (Math.sin(a) > 0 ? 0.004 : 0))
+            pop.add(parel)
+          }
+          // Kapmouwtjes van tule over de schouders
+          const tuleTex = canvasTextuur(128, 128, (ctx, w, h) => {
+            // Fijn net, zoals tule: heldere draadjes en doorzichtige gaatjes
+            ctx.clearRect(0, 0, w, h)
+            ctx.strokeStyle = 'rgba(255,255,255,1)'; ctx.lineWidth = 2.2
+            for (let i = -w; i < w * 2; i += 8) {
+              ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + h * 0.58, h); ctx.stroke()
+              ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i - h * 0.58, h); ctx.stroke()
+            }
+          })
+          tuleTex.wrapS = tuleTex.wrapT = THREE.RepeatWrapping
+          tuleTex.repeat.set(40, 10)
+          const tule = (kleur, opaciteit) => new THREE.MeshStandardMaterial({ color: kleur, alphaMap: tuleTex, transparent: true, opacity: opaciteit, roughness: 0.95, side: THREE.DoubleSide, depthWrite: false })
+          for (const k of [-1, 1]) {
+            const mouw = new THREE.Mesh(new THREE.SphereGeometry(0.055, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), tule('#f4ead8', 0.85))
+            mouw.position.set(k * 0.165, WAIST + 0.36, 0)
+            mouw.rotation.z = -k * 1.0
+            pop.add(mouw)
+          }
+          // Verschoten roze satijnen lint om de taille, met een strik en
+          // twee afhangende linten achteraan
+          const lintMat = new THREE.MeshStandardMaterial({ color: '#d9aaa2', roughness: 0.4, metalness: 0.05, side: THREE.DoubleSide })
+          const lint = new THREE.Mesh(new THREE.CylinderGeometry(0.124, 0.124, 0.026, 48, 1, true), lintMat)
+          lint.scale.z = 0.76
+          lint.position.y = WAIST + 0.005
+          pop.add(lint)
+          for (const k of [-1, 1]) {
+            const lus = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.009, 8, 18), lintMat)
+            lus.scale.set(1.3, 0.8, 0.5)
+            lus.position.set(k * 0.035, WAIST + 0.005, -0.1)
+            lus.rotation.y = k * 0.4
+            const slip = new THREE.Mesh(new THREE.PlaneGeometry(0.022, 0.32), lintMat)
+            slip.position.set(k * 0.02, WAIST - 0.15, -0.098)
+            slip.rotation.set(-0.12, 0, k * 0.08)
+            pop.add(lus, slip)
+          }
+          const knoop = new THREE.Mesh(new THREE.SphereGeometry(0.014, 10, 8), lintMat)
+          knoop.position.set(0, WAIST + 0.005, -0.1)
+          pop.add(knoop)
+          // Zijden roosjes op de taille, vooraan
+          ;[[-0.06, 0.02], [0.0, 0.0], [0.055, 0.025]].forEach(([x, dy], i) => {
+            const roos = new THREE.Group()
+            for (let b = 0; b < 6; b++) {
+              const blad = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), new THREE.MeshStandardMaterial({ color: i === 1 ? '#c98f88' : '#e2bdb5', roughness: 0.6 }))
+              const a = b / 6 * Math.PI * 2
+              blad.position.set(Math.cos(a) * 0.009, Math.sin(a) * 0.009, 0)
+              blad.scale.set(1, 1, 0.5)
+              roos.add(blad)
+            }
+            roos.position.set(x, WAIST + 0.02 + dy, 0.096 - Math.abs(x) * 0.25)
+            pop.add(roos)
+          })
+
+          // Romantische tutu: zes lagen tule in een klokvorm tot halverwege de kuit.
+          // Elke laag golft zacht, heeft een licht rafelige zoom en is iets anders
+          // van kleur, zodat de lagen door elkaar heen schemeren.
+          const LAGEN = [
+            [0.46, 0.68, '#f5ecdc', 0.5], [0.45, 0.66, '#f2e8d6', 0.5], [0.43, 0.63, '#efe4cf', 0.55],
+            [0.41, 0.6, '#ede0c9', 0.6], [0.38, 0.56, '#ead9c0', 0.7], [0.34, 0.5, '#e6d3b8', 0.85],
+          ]
+          LAGEN.forEach(([wijd, lang, kleur, op], laag) => {
+            const punten = []
+            for (let i = 0; i <= 24; i++) {
+              const t = i / 24
+              const r = 0.122 + (wijd - 0.122) * Math.pow(Math.sin(t * Math.PI / 2), 0.62)
+              punten.push(new THREE.Vector2(r, -t * lang))
+            }
+            const geo = new THREE.LatheGeometry(punten, 160)
+            const pos = geo.attributes.position
+            const fase = laag * 1.7
+            for (let i = 0; i < pos.count; i++) {
+              const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i)
+              const t = -y / lang, hoek = Math.atan2(z, x)
+              // Zachte plooien die naar de zoom dieper worden, en een golvende, rafelige onderrand
+              const plooi = 1 + (Math.sin(hoek * (11 + laag * 2) + fase) * 0.04 + Math.sin(hoek * 23 + fase * 2) * 0.015) * t
+              const zoom = (Math.sin(hoek * 9 + fase) * 0.018 + Math.sin(hoek * 37 + fase) * 0.006) * t * t
+              pos.setXYZ(i, x * plooi, y + zoom, z * plooi * 0.98)
+            }
+            geo.computeVertexNormals()
+            const rok = new THREE.Mesh(geo, tule(kleur, op))
+            rok.position.y = WAIST - 0.005
+            rok.renderOrder = 10 - laag
+            pop.add(rok)
+          })
+          // Onderrok: een iets stevigere binnenlaag zodat de rok niet leeg oogt
+          const onder = new THREE.Mesh(new THREE.LatheGeometry([[0.12, 0], [0.22, -0.12], [0.28, -0.3], [0.3, -0.46]].map(([r, y]) => new THREE.Vector2(r, y)), 64),
+            new THREE.MeshStandardMaterial({ color: '#e4d2b6', roughness: 0.9, side: THREE.DoubleSide }))
+          onder.position.y = WAIST - 0.005
+          pop.add(onder)
+
+          // Eigen spot op de paspop
+          spotOp('noord', BANK.x, new THREE.Vector3(BANK.x, 1.2, BANK.z))
+        }
+
+
+        kussens.forEach((kussen, i) => {
+          const a = ((i + 0.5) / SEG) * Math.PI * 2, r = (R_UIT + R_RUG) / 2
+          // Shape-y wordt -z na het kantelen
+          const x = BANK.x + Math.cos(a) * r, z = BANK.z - Math.sin(a) * r
+          poefZitjes.push({ obj: kussen, zit: new THREE.Vector3(x, zitY, z), kijk: new THREE.Vector3(BANK.x + Math.cos(a) * 6, 1.5, BANK.z - Math.sin(a) * 6) })
+        })
+      }
+
+      // Objecten op de tafel: zet ze in deze groep, y = 0.75 is het tafelblad
+      const opTafel = new THREE.Group()
+      opTafel.position.set(TAFEL_X, 0.75, TAFEL_Z)
+      scene.add(opTafel)
+
+      // ---------------------------------------------------------------------
+      // Oude reiskoffer op de tafel, open, met herinneringen erin en errond:
+      // postkaarten, brieven met een rekker, een balletschoen, een stukje krant
+      // ---------------------------------------------------------------------
+      // Hulpje: een textuur tekenen op een canvas
+      function canvasTextuur(b, h, teken) {
+        const c = document.createElement('canvas')
+        c.width = b; c.height = h
+        teken(c.getContext('2d'), b, h)
+        const tex = new THREE.CanvasTexture(c)
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.anisotropy = 4
+        return tex
+      }
+      // Kriebelig handschrift: golvende lijntjes
+      function handschrift(ctx, x, y, breedte, regels, regelAfstand, kleur = '#3a3550') {
+        ctx.strokeStyle = kleur
+        ctx.lineWidth = 2
+        for (let r = 0; r < regels; r++) {
+          const lengte = breedte * (0.6 + Math.random() * 0.4)
+          ctx.beginPath()
+          for (let i = 0; i <= lengte; i += 3) {
+            const yy = y + r * regelAfstand + Math.sin(i * 0.35 + r) * 3 + Math.sin(i * 0.9) * 1.5
+            i === 0 ? ctx.moveTo(x + i, yy) : ctx.lineTo(x + i, yy)
+          }
+          ctx.stroke()
+        }
+      }
+      // Een plat voorwerp (kaart, brief, krant) met een eigen boven- en onderkant
+      function platVoorwerp(b, d, dikte, boven, onder, rand = '#e9dfca') {
+        const randMat = new THREE.MeshStandardMaterial({ color: rand, roughness: 0.9 })
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(b, dikte, d), [
+          randMat, randMat,
+          new THREE.MeshStandardMaterial({ map: boven, roughness: 0.85 }),
+          new THREE.MeshStandardMaterial({ map: onder, roughness: 0.85 }),
+          randMat, randMat,
+        ])
+        mesh.castShadow = mesh.receiveShadow = true
+        return mesh
+      }
+
+      // Textures
+      const papierKleur = '#efe4cc'
+      const briefTex = () => canvasTextuur(512, 320, (ctx, w, h) => {
+        ctx.fillStyle = papierKleur; ctx.fillRect(0, 0, w, h)
+        // Postzegel met stempel
+        ctx.fillStyle = '#9c3b2f'; ctx.fillRect(w - 110, 24, 80, 96)
+        ctx.strokeStyle = '#f3ead6'; ctx.lineWidth = 4; ctx.strokeRect(w - 104, 30, 68, 84)
+        ctx.strokeStyle = 'rgba(40,40,60,.55)'; ctx.lineWidth = 3
+        ctx.beginPath(); ctx.arc(w - 120, 90, 42, 0, Math.PI * 2); ctx.stroke()
+        handschrift(ctx, 150, 170, 280, 3, 38)
+      })
+      const briefAchter = canvasTextuur(256, 160, (ctx, w, h) => {
+        ctx.fillStyle = '#e6d9bd'; ctx.fillRect(0, 0, w, h)
+        ctx.strokeStyle = 'rgba(120,100,70,.5)'; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w / 2, h * 0.55); ctx.lineTo(w, 0); ctx.stroke()
+      })
+      const kaartAchter = canvasTextuur(384, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#f1e8d4'; ctx.fillRect(0, 0, w, h)
+        ctx.strokeStyle = '#b9aa8c'; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(w / 2, 20); ctx.lineTo(w / 2, h - 20); ctx.stroke()
+        for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(w / 2 + 20, 110 + i * 32); ctx.lineTo(w - 24, 110 + i * 32); ctx.stroke() }
+        handschrift(ctx, 20, 50, 150, 6, 28)
+        ctx.fillStyle = '#4f6a8a'; ctx.fillRect(w - 70, 18, 50, 60)
+      })
+      const krantTex = canvasTextuur(512, 380, (ctx, w, h) => {
+        ctx.fillStyle = '#e4dcc6'; ctx.fillRect(0, 0, w, h)
+        ctx.fillStyle = '#2b2620'
+        ctx.font = 'bold 44px Georgia, serif'; ctx.textAlign = 'center'
+        ctx.fillText('AFTENBLADET', w / 2, 52)
+        ctx.fillRect(16, 64, w - 32, 3)
+        ctx.font = 'bold 26px Georgia, serif'
+        ctx.fillText('Russisk ballerina danser i København', w / 2, 100)
+        // Kolommen met grijze tekstregels en een vaag fotootje
+        ctx.fillStyle = '#b8ae98'; ctx.fillRect(20, 118, 150, 110)
+        for (let k = 0; k < 3; k++) {
+          for (let r = 0; r < 26; r++) {
+            const x = 20 + k * 162, y = (k === 0 ? 240 : 120) + r * 9
+            if (y > h - 12) break
+            ctx.fillStyle = 'rgba(60,52,42,.55)'
+            ctx.fillRect(x, y, 145 - (r % 7 === 6 ? 50 : 0), 3)
+          }
+        }
+      })
+
+      // Afbeeldingen voor de voorkant van de postkaarten (dezelfde als aan de muur)
+      const kaartBeelden = AFBEELDINGEN.map(a => {
+        const tex = textureLoader.load(encodeURI(a.afbeelding))
+        tex.colorSpace = THREE.SRGBColorSpace
+        return tex
+      })
+      function postkaart(i) {
+        const beeld = kaartBeelden[i % kaartBeelden.length] || kaartAchter
+        return platVoorwerp(0.15, 0.1, 0.002, beeld, kaartAchter, '#f4ecdb')
+      }
+      function brief() { return platVoorwerp(0.17, 0.105, 0.003, briefTex(), briefAchter) }
+
+      // Balletschoen (spitzen): satijnen schoen met linten
+      function balletschoen() {
+        const groep = new THREE.Group()
+        const satijn = new THREE.MeshStandardMaterial({ color: '#e7b9b0', roughness: 0.35, metalness: 0.05 })
+        // Lijf: een langgerekte capsule, smal en plat (zoals een spitzen)
+        const lijf = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.17, 8, 20), satijn)
+        lijf.rotation.x = Math.PI / 2
+        lijf.scale.set(0.95, 1, 0.62)
+        lijf.position.y = 0.019
+        lijf.castShadow = true
+        groep.add(lijf)
+        // Plat spitsje vooraan
+        const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.006, 16), satijn)
+        spits.rotation.x = Math.PI / 2
+        spits.position.set(0, 0.019, -0.112)
+        groep.add(spits)
+        // Leren zool
+        const zool = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.003, 0.2), new THREE.MeshStandardMaterial({ color: '#6b4a35', roughness: 0.8 }))
+        zool.position.set(0, 0.0015, 0.01)
+        groep.add(zool)
+        // Opening: lang ovaal aan de hielkant, met een donker binnenste
+        const opening = new THREE.Mesh(new THREE.CircleGeometry(0.022, 24), new THREE.MeshStandardMaterial({ color: '#5e4440', roughness: 1 }))
+        opening.rotation.x = -Math.PI / 2
+        opening.scale.set(1, 3.2, 1)
+        opening.position.set(0, 0.0381, 0.04)
+        groep.add(opening)
+        // Twee linten die over de tafel krullen
+        const lint = new THREE.MeshStandardMaterial({ color: '#efc5bd', roughness: 0.4, side: THREE.DoubleSide })
+        ;[-1, 1].forEach(kant => {
+          const pad = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(kant * 0.022, 0.03, 0.06),
+            new THREE.Vector3(kant * 0.08, 0.004, 0.06),
+            new THREE.Vector3(kant * 0.14, 0.003, 0.02),
+            new THREE.Vector3(kant * 0.17, 0.003, -0.07),
+            new THREE.Vector3(kant * 0.22, 0.003, -0.1),
+          ])
+          const buis = new THREE.Mesh(new THREE.TubeGeometry(pad, 40, 0.004, 4, false), lint)
+          buis.scale.y = 0.4
+          groep.add(buis)
+        })
+        return groep
+      }
+
+      // Rekker: een dun elastiekje
+      const rekkerMat = new THREE.MeshStandardMaterial({ color: '#b5533c', roughness: 0.6 })
+      function rekker(straal) {
+        const r = new THREE.Mesh(new THREE.TorusGeometry(straal, 0.0025, 6, 40), rekkerMat)
+        r.castShadow = true
+        return r
+      }
+
+      // Gesloten mand van naturel vlechtwerk, met een apart deksel en een lusje.
+      const vlechtTex = canvasTextuur(512, 512, (ctx, w, h) => {
+        ctx.fillStyle = '#73502c'
+        ctx.fillRect(0, 0, w, h)
+        for (let rij = -1; rij < 32; rij++) {
+          for (let kol = -1; kol < 16; kol++) {
+            const x = kol * 32 + (rij % 2) * 16
+            const y = rij * 16
+            ctx.strokeStyle = '#b59056'
+            ctx.lineWidth = 11
+            ctx.beginPath()
+            ctx.moveTo(x, y + 8)
+            ctx.bezierCurveTo(x + 8, y - 1, x + 23, y + 17, x + 32, y + 8)
+            ctx.stroke()
+            ctx.strokeStyle = '#d8bb83'
+            ctx.lineWidth = 2
+            ctx.stroke()
+            for (let vezel = 0; vezel < 3; vezel++) {
+              ctx.strokeStyle = vezel % 2 ? '#96703e' : '#c5a570'
+              ctx.lineWidth = 1
+              ctx.beginPath()
+              ctx.moveTo(x + 4 + vezel * 8, y + 3)
+              ctx.lineTo(x + 9 + vezel * 8, y + 12)
+              ctx.stroke()
+            }
+          }
+        }
+      })
+      const mandMat = new THREE.MeshStandardMaterial({ map: vlechtTex, bumpMap: vlechtTex, bumpScale: 0.006, roughness: 0.95 })
+      const randMandMat = new THREE.MeshStandardMaterial({ color: '#b79661', roughness: 1 })
+      const mand = new THREE.Group()
+      mand.position.set(-0.12, 0, 0.03)
+      mand.rotation.y = 0.12
+      opTafel.add(mand)
+
+      // Grote spot recht boven de doos: een fors armatuur aan het plafond, een
+      // sterke smalle lichtbundel en een zachte zichtbare lichtkegel
+      {
+        const doos = new THREE.Vector3(TAFEL_X - 0.12, TAFEL_H + 0.1, TAFEL_Z + 0.03)
+        const plafondY = HOOGTE - BALK_H
+        const spotPos = new THREE.Vector3(doos.x, plafondY - 0.25, doos.z + 0.9)
+        const armatuurMat = new THREE.MeshStandardMaterial({ color: '#1c1c1c', roughness: 0.4, metalness: 0.6 })
+        const kop = new THREE.Group()
+        kop.position.copy(spotPos)
+        const behuizing = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.36, 28, 1, true), armatuurMat)
+        behuizing.material.side = THREE.DoubleSide
+        const achterkant = new THREE.Mesh(new THREE.CircleGeometry(0.11, 28), armatuurMat)
+        achterkant.position.y = 0.18
+        achterkant.rotation.x = -Math.PI / 2
+        const lens = new THREE.Mesh(new THREE.CircleGeometry(0.135, 28), new THREE.MeshBasicMaterial({ color: '#fff6e0', toneMapped: false }))
+        lens.position.y = -0.16
+        lens.rotation.x = Math.PI / 2
+        kop.add(behuizing, achterkant, lens)
+        // Kop richten: de lokale -y-as wijst naar de doos
+        kop.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), doos.clone().sub(spotPos).normalize())
+        scene.add(kop)
+        // Beugel naar het plafond
+        plafondBlok(0.025, plafondY - spotPos.y, 0.025, armatuurMat, spotPos.x, (plafondY + spotPos.y) / 2, spotPos.z)
+
+        const spot = new THREE.SpotLight('#fff1d6', 40, 6, Math.PI / 11, 0.35, 1.2)
+        spot.position.copy(spotPos)
+        spot.target.position.copy(doos)
+        spot.castShadow = true
+        spot.shadow.mapSize.set(1024, 1024)
+        spot.shadow.bias = -0.0008
+        scene.add(spot, spot.target)
+
+        // Zichtbare lichtbundel: een doorschijnende kegel die naar onder vervaagt
+        const lengte = spotPos.distanceTo(doos) + 0.2
+        const bundelTex = canvasTextuur(8, 256, (ctx, w, h) => {
+          const g = ctx.createLinearGradient(0, 0, 0, h)
+          g.addColorStop(0, 'rgba(255,240,210,0.55)'); g.addColorStop(1, 'rgba(255,240,210,0)')
+          ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+        })
+        const bundel = new THREE.Mesh(new THREE.CylinderGeometry(0.13, lengte * Math.tan(Math.PI / 11), lengte, 32, 1, true),
+          new THREE.MeshBasicMaterial({ map: bundelTex, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }))
+        bundel.raycast = () => {}
+        bundel.position.copy(spotPos).addScaledVector(doos.clone().sub(spotPos).normalize(), lengte / 2)
+        bundel.quaternion.copy(kop.quaternion)
+        scene.add(bundel)
+      }
+      const mandDeel = (w, h, d, y, mat = mandMat) => {
+        const deel = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+        deel.position.y = y
+        deel.castShadow = deel.receiveShadow = true
+        mand.add(deel)
+        return deel
+      }
+      // De mand is klein: alles hieronder is in 'mandmaat' getekend en daarna verkleind
+      mand.scale.setScalar(0.5)
+      // Holle bak: bodem + vier wanden, zodat je erin kunt kijken als het deksel opengaat
+      const WAND_M = 0.03
+      const binnenMat = new THREE.MeshStandardMaterial({ color: '#3a2412', roughness: 1, emissive: '#ffb347', emissiveIntensity: 0 })
+      mandDeel(0.88, WAND_M, 0.58, WAND_M / 2)
+      const wand = (w, d, x, z) => { mandDeel(w, 0.43, d, 0.215).position.set(x, 0.215, z) }
+      wand(0.88, WAND_M, 0, -0.29 + WAND_M / 2)
+      wand(0.88, WAND_M, 0, 0.29 - WAND_M / 2)
+      wand(WAND_M, 0.58, -0.44 + WAND_M / 2, 0)
+      wand(WAND_M, 0.58, 0.44 - WAND_M / 2, 0)
+      // Donkere binnenkant die gaat gloeien
+      const binnen = new THREE.Mesh(new THREE.BoxGeometry(0.88 - WAND_M * 2 - 0.004, 0.4, 0.58 - WAND_M * 2 - 0.004), binnenMat)
+      binnen.material.side = THREE.BackSide
+      binnen.position.y = WAND_M + 0.2
+      mand.add(binnen)
+      mandDeel(0.91, 0.018, 0.61, 0.437, randMandMat)
+      const rand = (y, ouder) => {
+        const pad = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(-0.44,y,-0.3), new THREE.Vector3(0.44,y,-0.3),
+          new THREE.Vector3(0.46,y,-0.28), new THREE.Vector3(0.46,y,0.28),
+          new THREE.Vector3(0.44,y,0.3), new THREE.Vector3(-0.44,y,0.3),
+          new THREE.Vector3(-0.46,y,0.28), new THREE.Vector3(-0.46,y,-0.28),
+        ], true, 'centripetal')
+        ouder.add(new THREE.Mesh(new THREE.TubeGeometry(pad, 128, 0.012, 8, true), randMandMat))
+      }
+      // Afgeronde omwikkelde randen rondom de bodem en de bovenkant van de bak
+      rand(0.025, mand)
+      rand(0.45, mand)
+
+      // Deksel: scharniert aan de achterkant (z = -0.3) en klapt open bij hover
+      const mandDeksel = new THREE.Group()
+      mandDeksel.position.set(0, 0.446, -0.3)
+      mand.add(mandDeksel)
+      const dekselBlad = new THREE.Mesh(new THREE.BoxGeometry(0.93, 0.045, 0.63), mandMat)
+      dekselBlad.position.set(0, 0.0225, 0.3)
+      dekselBlad.castShadow = dekselBlad.receiveShadow = true
+      mandDeksel.add(dekselBlad)
+      const dekselRand = new THREE.Group()
+      dekselRand.position.set(0, -0.446, 0.3)
+      rand(0.49, dekselRand)
+      mandDeksel.add(dekselRand)
+
+      // De gloed: warm licht uit de mand, een zachte lichtzuil en zwevende glinsters
+      const gloedTex = canvasTextuur(128, 256, (ctx, w, h) => {
+        const g = ctx.createLinearGradient(0, h, 0, 0)
+        g.addColorStop(0, 'rgba(255,214,140,1)')
+        g.addColorStop(0.35, 'rgba(255,200,120,.45)')
+        g.addColorStop(1, 'rgba(255,190,110,0)')
+        ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+        // Zijkanten zacht laten uitlopen
+        ctx.globalCompositeOperation = 'destination-in'
+        const z = ctx.createLinearGradient(0, 0, w, 0)
+        z.addColorStop(0, 'rgba(0,0,0,0)'); z.addColorStop(0.5, 'rgba(0,0,0,1)'); z.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = z; ctx.fillRect(0, 0, w, h)
+      })
+      const gloedMat = new THREE.MeshBasicMaterial({ map: gloedTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })
+      const gloed = new THREE.Group()
+      // Twee gekruiste vlakken, zodat de lichtzuil van alle kanten zichtbaar is
+      ;[0, Math.PI / 2].forEach(ry => {
+        const vlak = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.1), gloedMat)
+        vlak.rotation.y = ry
+        vlak.position.y = 0.4 + 0.55
+        vlak.raycast = () => {}   // niet klikbaar, anders opent de mand vanuit de lucht
+        gloed.add(vlak)
+      })
+      mand.add(gloed)
+      const gloedLicht = new THREE.PointLight('#ffc070', 0, 2.2, 1.6)
+      gloedLicht.position.y = 0.6
+      mand.add(gloedLicht)
+      const glinsterMat = new THREE.MeshBasicMaterial({ color: '#fff1c8', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })
+      const glinsters = Array.from({ length: 14 }, (_, i) => {
+        const g = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), glinsterMat)
+        g.userData = { x: (Math.random() - 0.5) * 0.7, z: (Math.random() - 0.5) * 0.45, fase: i / 14, snelheid: 0.25 + Math.random() * 0.25 }
+        g.raycast = () => {}
+        mand.add(g)
+        return g
+      })
+
+      // 0 = dicht, 1 = open. Vloeiend naar het doel, met een kleine overshoot bij het openen.
+      let mandOpen = 0, mandDoel = 0
+      function updateMand(dt, tijd) {
+        mandOpen += (mandDoel - mandOpen) * (1 - Math.exp(-dt / 0.18))
+        const t = mandOpen
+        mandDeksel.rotation.x = -1.9 * t
+        const flikker = 0.9 + Math.sin(tijd * 6) * 0.06 + Math.sin(tijd * 13.7) * 0.04
+        binnenMat.emissiveIntensity = 1.6 * t * flikker
+        gloedMat.opacity = 0.75 * t * flikker
+        gloedLicht.intensity = 2.5 * t * flikker
+        glinsterMat.opacity = t
+        glinsters.forEach(g => {
+          const { x, z, fase, snelheid } = g.userData
+          const k = (tijd * snelheid + fase) % 1
+          g.position.set(x + Math.sin(tijd * 2 + fase * 9) * 0.03, 0.35 + k * 0.9 * t, z)
+          g.scale.setScalar(Math.sin(k * Math.PI) * t + 0.001)
+        })
+      }
+      const lus = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.007, 8, 24), randMandMat)
+      lus.position.set(0, 0.4, 0.319)
+      lus.scale.y = 1.4
+      mand.add(lus)
+
+      // Errond op de tafel
+      const opTafelLeggen = (obj, x, z, ry, y = 0.0015) => {
+        obj.position.set(x, y, z)
+        obj.rotation.y = ry
+        opTafel.add(obj)
+      }
+      // Alleen de postkaarten liggen op tafel, los naast de doos (rechts ervan)
+      opTafelLeggen(postkaart(2), 0.27, 0.12, -0.35)
+      opTafelLeggen(postkaart(3), 0.38, -0.03, 0.5, 0.0035)
+      opTafelLeggen(postkaart(0), 0.25, -0.13, 0.15)
+
+      // ---------------------------------------------------------------------
+      // Klein bordje met een titel
+      // ---------------------------------------------------------------------
+      function bordje(tekst, { p, ry }) {
+        const canvas = document.createElement('canvas')
+        canvas.width = 512; canvas.height = 128
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 512, 128)
+        ctx.fillStyle = '#222'; ctx.font = '44px Helvetica, Arial, sans-serif'
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(tekst, 256, 64)
+        const tex = new THREE.CanvasTexture(canvas)
+        tex.colorSpace = THREE.SRGBColorSpace
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.01), [randMat, randMat, randMat, randMat, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), randMat])
+        mesh.position.copy(p)
+        mesh.rotation.y = ry
+        scene.add(mesh)
+      }
+
+      // ---------------------------------------------------------------------
+      // Video: een 16:9-scherm op de witte bakstenen westmuur, onder het lage
+      // plafond, met een bankje ervoor. Geen aparte ruimte meer.
+      // ---------------------------------------------------------------------
+      const video = document.createElement('video')
+      video.src = encodeURI(VIDEO_PAD)
+      video.loop = true
+      video.playsInline = true
+      video.crossOrigin = 'anonymous'
+      video.preload = 'auto'
+      // De video staat onzichtbaar in de pagina, zodat hij volledig scherm kan gaan
+      video.id = 'tv-video'
+      // Omhulsel dat volledig scherm gaat: video + hint om terug te gaan
+      const videoVol = document.createElement('div')
+      videoVol.id = 'video-vol'
+      videoVol.innerHTML = '<p class="terug-hint"><kbd>Esc</kbd> or click to return to the room</p>'
+      videoVol.prepend(video)
+      document.body.appendChild(videoVol)
+      const videoTex = new THREE.VideoTexture(video)
+      videoTex.colorSpace = THREE.SRGBColorSpace
+
+      // Groot scherm: zo groot als onder het lage plafond past
+      const SCHERM_B = 6, SCHERM_H = SCHERM_B * 9 / 16
+      const schermPos = new THREE.Vector3(ZAAL.minX + 0.085, 1.88, VIDEO_Z)
+      blok(0.04, SCHERM_H + 0.04, SCHERM_B + 0.04, new THREE.MeshStandardMaterial({ color: '#0a0a0a', roughness: 0.3, metalness: 0.4 }), schermPos.x, schermPos.y, schermPos.z)
+      // Zolang de video niet speelt, toont het scherm zwart
+      const schermMat = new THREE.MeshBasicMaterial({ color: '#111' })
+      const scherm = new THREE.Mesh(new THREE.PlaneGeometry(SCHERM_B, SCHERM_H), schermMat)
+      scherm.position.set(schermPos.x + 0.025, schermPos.y, schermPos.z)
+      scherm.rotation.y = Math.PI / 2
+      scene.add(scherm)
+
+      // Stilstaand beeld: het eerste frame van de video, zodat je het al van
+      // ver in de zaal ziet. Het wordt één keer vastgelegd.
+      let stilBeeld = null
+      function toonStilstaandBeeld() {
+        if (!stilBeeld || videoAan) return
+        scherm.material = new THREE.MeshBasicMaterial({ map: stilBeeld, toneMapped: false })
+      }
+      video.addEventListener('loadeddata', () => {
+        const c = document.createElement('canvas')
+        c.width = video.videoWidth
+        c.height = video.videoHeight
+        c.getContext('2d').drawImage(video, 0, 0)
+        stilBeeld = new THREE.CanvasTexture(c)
+        stilBeeld.colorSpace = THREE.SRGBColorSpace
+        toonStilstaandBeeld()
+      }, { once: true })
+      // Sommige browsers (Safari) tonen pas een frame na een kleine sprong in de tijd
+      video.addEventListener('loadedmetadata', () => { if (video.currentTime === 0) video.currentTime = 0.001 }, { once: true })
+      bordje(VIDEO_TITEL, { p: new THREE.Vector3(ZAAL.minX + 0.06, 1.2, VIDEO_Z + SCHERM_B / 2 + 0.35), ry: Math.PI / 2 })
+
+      // ---------------------------------------------------------------------
+      // Zittribune in de videoruimte: twee gebogen, getrapte vleugels met rood
+      // tapijt langs de noord- en zuidmuur, zoals een kleine amfitheatertrap.
+      // Ertussen blijft een brede vrije gang van het gordijn naar het scherm.
+      // ---------------------------------------------------------------------
+      const TRIB_X0 = ZAAL.minX + 0.6       // begint iets van de schermmuur, zodat het scherm vrij blijft
+      const TRIB_X1 = LIGGER_X - 0.65       // stopt net voor het gordijn
+      const TREDE_H = 0.42                  // hoogte per trede (zithoogte)
+      const TREDEN = 3
+      const MUUR_Z = ZAAL.maxZ - 0.05      // binnenkant van de noord-/zuidmuur
+      // Diepte van de onderste trede vanaf de muur: ondiep bij het scherm,
+      // diep achteraan, met een zachte golf erin (zoals op de voorbeeldfoto's)
+      const tredeDiepte = (x, i) => {
+        const t = (x - TRIB_X0) / (TRIB_X1 - TRIB_X0)
+        const d = 1.25 + 1.3 * Math.pow(t, 1.4) + 0.28 * Math.sin(t * Math.PI * 2.2 + 0.4)
+        return Math.max(0.42, d - i * 0.62)
+      }
+      const tapijtTop = new THREE.MeshStandardMaterial({ map: tapijtTex, bumpMap: tapijtTex, bumpScale: 1.5, color: '#bdbdbd', roughness: 1 })
+      const tapijtZij = new THREE.MeshStandardMaterial({ color: '#0e0d0f', roughness: 1 })
+      // Gedimd wit, zodat de lijnen de donkere ruimte niet overstralen
+      const stapLichtMat = new THREE.MeshBasicMaterial({ color: '#8a8a8a', toneMapped: false })
+      // Geen zichtbare kussens meer: de zitplekken blijven als onzichtbare klikvlakken
+      const kussenMat = new THREE.MeshBasicMaterial({ visible: false })
+      const STAPPEN = 48
+      const tribuneMeshes = []
+      // Alle kussens waar je op kunt gaan zitten: { obj, zit = bovenkant van de zitplek }
+      const zitjes = [...poefZitjes]
+
+      for (const kant of [-1, 1]) {
+        // Punt op de voorrand van trede i, als wereld-z
+        const voorZ = (x, i) => kant * (MUUR_Z - tredeDiepte(x, i))
+        for (let i = 0; i < TREDEN; i++) {
+          // Vorm in het xz-vlak; shape-y = -z, want de mesh wordt -90° gekanteld
+          const vorm = new THREE.Shape()
+          vorm.moveTo(TRIB_X0, -kant * MUUR_Z)
+          vorm.lineTo(TRIB_X1, -kant * MUUR_Z)
+          for (let s = STAPPEN; s >= 0; s--) {
+            const x = TRIB_X0 + (TRIB_X1 - TRIB_X0) * s / STAPPEN
+            vorm.lineTo(x, -voorZ(x, i))
+          }
+          vorm.closePath()
+          const h = TREDE_H * (i + 1)
+          const geo = new THREE.ExtrudeGeometry(vorm, { depth: h - 0.03, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 3, curveSegments: 4 })
+          const trede = new THREE.Mesh(geo, [tapijtTop, tapijtZij])
+          trede.rotation.x = -Math.PI / 2
+          trede.castShadow = trede.receiveShadow = true
+          scene.add(trede)
+          tribuneMeshes.push(trede)
+
+          // Warm lichtlijntje onderaan elke stootrand, zodat je de treden ziet in het donker
+          const pad = new THREE.CatmullRomCurve3(Array.from({ length: STAPPEN + 1 }, (_, s) => {
+            const x = TRIB_X0 + 0.05 + (TRIB_X1 - TRIB_X0 - 0.1) * s / STAPPEN
+            const z = voorZ(x, i)
+            return new THREE.Vector3(x, i * TREDE_H + 0.02, z - kant * 0.045)
+          }))
+          scene.add(new THREE.Mesh(new THREE.TubeGeometry(pad, STAPPEN * 2, 0.007, 6, false), stapLichtMat))
+        }
+
+        // Botsing: de onderste trede, in smalle strookjes langs x
+        for (let s = 0; s < 24; s++) {
+          const xa = TRIB_X0 + (TRIB_X1 - TRIB_X0) * s / 24
+          const xb = TRIB_X0 + (TRIB_X1 - TRIB_X0) * (s + 1) / 24
+          const d = Math.max(tredeDiepte(xa, 0), tredeDiepte(xb, 0)) + 0.03
+          voegObstakelToe((xa + xb) / 2, kant * (MUUR_Z - d / 2), xb - xa, d)
+        }
+
+        // Kussens en poefs op de treden, met een kleine willekeur in de plaatsing.
+        // [x-fractie, trede, soort]
+        const VERDELING = [
+          [0.3, 0, 'rond'], [0.75, 0, 'poef'],
+          [0.55, 1, 'zitzak'],
+          [0.7, 2, 'rond'],
+        ]
+        VERDELING.forEach(([f, i, soort], n) => {
+          const x = TRIB_X0 + (TRIB_X1 - TRIB_X0) * (kant > 0 ? f : 1 - f * 0.92)
+          const binnen = i < TREDEN - 1 ? tredeDiepte(x, i + 1) : 0
+          const z = kant * (MUUR_Z - (tredeDiepte(x, i) + binnen) / 2)
+          const y = TREDE_H * (i + 1)
+          let m
+          if (soort === 'poef') {
+            m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 24), kussenMat)
+            m.position.set(x, y + 0.025, z)
+          } else if (soort === 'rond') {
+            // Elk rond kussen een andere maat
+            const r = 0.14 + (n % 3) * 0.05
+            m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.03, 24), kussenMat)
+            m.position.set(x, y + 0.015, z)
+          } else {
+            // Zitzak: een platgedrukte, iets scheve bol tegen de volgende trede
+            m = new THREE.Mesh(new THREE.SphereGeometry(0.34, 24, 16), kussenMat)
+            m.scale.set(0.8, 0.09, 0.6)
+            m.position.set(x, y + 0.03, z)
+            m.rotation.y = n
+          }
+          scene.add(m)
+          zitjes.push({ obj: m, zit: new THREE.Vector3(x, y, z) })
+        })
+      }
+
+      // Eén gebogen bank in het midden, in dezelfde stijl als de tribune (zwart
+      // tapijt, afgeronde randen, wit lichtlijntje). De boog volgt een cirkel rond
+      // het scherm, zodat iedereen er recht naar kijkt.
+      const BOOG_R = 2.6                 // straal vanaf het midden van het scherm
+      const BOOG_HOEK = 0.42             // halve openingshoek (radialen), ± 24°
+      const BANK_D = 0.42, ZIT_H = TREDE_H
+      const boogMidden = new THREE.Vector2(schermPos.x, VIDEO_Z)
+      // Punt op de boog (in x, z) voor een hoek a en een straal r
+      const boogPunt = (a, r) => new THREE.Vector2(boogMidden.x + Math.cos(a) * r, boogMidden.y + Math.sin(a) * r)
+      {
+        const rIn = BOOG_R - BANK_D / 2, rUit = BOOG_R + BANK_D / 2, STAP = 40
+        // Omtrek: buitenboog heen, afgeronde kop, binnenboog terug, afgeronde kop
+        // Halve cirkel als kop: van de ene rand naar de andere, bol naar buiten
+        const kop = (m, a, k, richting) => {
+          const d = BANK_D / 2, ex = Math.cos(a), ez = Math.sin(a), tx = -ez, tz = ex
+          return new THREE.Vector2(
+            m.x + richting * (ex * Math.cos(k) * d + tx * Math.sin(k) * d),
+            m.y + richting * (ez * Math.cos(k) * d + tz * Math.sin(k) * d))
+        }
+        const omtrek = []
+        for (let s = 0; s <= STAP; s++) omtrek.push(boogPunt(-BOOG_HOEK + 2 * BOOG_HOEK * s / STAP, rUit))
+        for (let s = 1; s < 12; s++) {
+          const k = Math.PI * s / 12, a = BOOG_HOEK
+          const m = boogPunt(a, BOOG_R)
+          omtrek.push(kop(m, a, k, 1))
+        }
+        for (let s = STAP; s >= 0; s--) omtrek.push(boogPunt(-BOOG_HOEK + 2 * BOOG_HOEK * s / STAP, rIn))
+        for (let s = 1; s < 12; s++) {
+          const k = Math.PI * s / 12, a = -BOOG_HOEK
+          const m = boogPunt(a, BOOG_R)
+          omtrek.push(kop(m, a, k, -1))
+        }
+        // Shape-y = -z, want het blok wordt -90° gekanteld
+        const vorm = new THREE.Shape(omtrek.map(p => new THREE.Vector2(p.x, -p.y)))
+        const bankGeo = new THREE.ExtrudeGeometry(vorm, { depth: ZIT_H - 0.03, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 3 })
+        const bank = new THREE.Mesh(bankGeo, [tapijtTop, tapijtZij])
+        bank.rotation.x = -Math.PI / 2
+        bank.castShadow = bank.receiveShadow = true
+        scene.add(bank)
+        // Wit lichtlijntje rondom onderaan, iets buiten de rand
+        const lijnPunten = omtrek.map(p => {
+          const r = p.clone().sub(boogMidden).length()
+          const naarBuiten = r > BOOG_R ? 0.045 : -0.045
+          const p2 = p.clone().sub(boogMidden).setLength(r + naarBuiten).add(boogMidden)
+          return new THREE.Vector3(p2.x, 0.02, p2.y)
+        })
+        scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(lijnPunten, true), 300, 0.007, 6, true), stapLichtMat))
+        // Vier zitplekken langs de boog (onzichtbare klikvlakken)
+        for (let s = 0; s < 4; s++) {
+          const a = -BOOG_HOEK * 0.8 + (BOOG_HOEK * 1.6) * s / 3
+          const p = boogPunt(a, BOOG_R)
+          const plek = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 20), kussenMat)
+          plek.position.set(p.x, ZIT_H + 0.015, p.y)
+          scene.add(plek)
+          zitjes.push({ obj: plek, zit: new THREE.Vector3(p.x, ZIT_H, p.y) })
+        }
+        // Botsing: kleine blokjes langs de boog
+        for (let s = 0; s <= 16; s++) {
+          const p = boogPunt(-BOOG_HOEK + 2 * BOOG_HOEK * s / 16, BOOG_R)
+          voegObstakelToe(p.x, p.y, BANK_D, BANK_D)
+        }
+      }
+
+      // Het scherm verlicht de ruimte: een zacht licht in de kleur van het beeld.
+      // We meten een paar keer per seconde de gemiddelde kleur van de video.
+      const schermLicht = new THREE.PointLight('#9fb0c8', 0, 9, 1.4)
+      schermLicht.position.set(schermPos.x + 1.4, schermPos.y, schermPos.z)
+      scene.add(schermLicht)
+      const meetCanvas = document.createElement('canvas')
+      meetCanvas.width = meetCanvas.height = 8
+      const meetCtx = meetCanvas.getContext('2d', { willReadFrequently: true })
+      const lichtKleur = new THREE.Color('#9fb0c8')
+      let lichtSterkte = 0, laatsteMeting = 0
+      function updateSchermLicht(nu) {
+        if (videoAan && video.readyState >= 2 && nu - laatsteMeting > 150) {
+          laatsteMeting = nu
+          meetCtx.drawImage(video, 0, 0, 8, 8)
+          const d = meetCtx.getImageData(0, 0, 8, 8).data
+          let rr = 0, gg = 0, bb = 0
+          for (let i = 0; i < d.length; i += 4) { rr += d[i]; gg += d[i + 1]; bb += d[i + 2] }
+          const n = d.length / 4, helder = (rr + gg + bb) / (n * 3 * 255)
+          lichtKleur.setRGB(rr / n / 255, gg / n / 255, bb / n / 255, THREE.SRGBColorSpace).multiplyScalar(1 / Math.max(helder, 0.15))
+          lichtSterkte = 1.5 + helder * 7
+        } else if (!videoAan) lichtSterkte = stilBeeld ? 1.2 : 0
+        schermLicht.color.lerp(lichtKleur, 0.12)
+        schermLicht.intensity += (lichtSterkte - schermLicht.intensity) * 0.12
+      }
+
+      // ---------------------------------------------------------------------
+      // Uitgang: een rechte deuropening in de oostmuur met een witte nis erachter.
+      // Loop je erin of klik je erop, dan vragen we of je terug wilt naar de homepage.
+      // ---------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Tijdlijn als hangende banen, zoals in een museum: hoge witte panelen aan
+      // dunne staalkabels, in een zigzag voor de oostmuur. Elk paneel is één
+      // hoofdstuk: nummer, jaartal, titel en een langere tekst. Inhoud: TIJDLIJN.
+      // ---------------------------------------------------------------------
+      {
+        const z0 = UITGANG_Z + DEUR + 0.35, z1 = ZAAL.maxZ - 0.3
+        const BAAN_B = 0.68, BAAN_H = 2.4, BAAN_ONDER = 0.22
+        const BAAN_X = ZAAL.maxX - 0.6
+        const plafondY = HOOGTE - BALK_H
+        const n = TIJDLIJN.length
+        const stap = (z1 - z0) / n
+        const kabelMat = new THREE.MeshStandardMaterial({ color: '#9a9c9e', roughness: 0.4, metalness: 0.5 })
+        const baanRand = new THREE.MeshStandardMaterial({ color: '#e9e7e2', roughness: 0.8 })
+
+        function breekAf(ctx, tekst, x, y, breedte, regelHoogte) {
+          let regel = ''
+          for (const woord of tekst.split(' ')) {
+            const test = regel ? regel + ' ' + woord : woord
+            if (ctx.measureText(test).width > breedte && regel) { ctx.fillText(regel, x, y); regel = woord; y += regelHoogte }
+            else regel = test
+          }
+          if (regel) ctx.fillText(regel, x, y)
+          return y + regelHoogte
+        }
+
+        TIJDLIJN.forEach(({ jaar, titel, tekst }, i) => {
+          // Canvas in dezelfde verhouding als het paneel
+          const tekenBaan = (ctx, w, h) => {
+            ctx.fillStyle = '#fbfbf9'; ctx.fillRect(0, 0, w, h)
+            const m = 48
+            ctx.fillStyle = '#8a8a8a'
+            ctx.font = '26px Helvetica, Arial, sans-serif'
+            ctx.textBaseline = 'top'
+            ctx.fillText(String(i + 1).padStart(2, '0'), m, m)
+            ctx.textAlign = 'right'
+            ctx.fillText(TIJDLIJN_TITEL.toUpperCase(), w - m, m)
+            ctx.textAlign = 'left'
+            ctx.fillStyle = '#111'
+            ctx.font = "110px 'marion-standard', Georgia, serif"
+            ctx.fillText(jaar, m, 210)
+            ctx.font = "44px 'marion-standard', Georgia, serif"
+            let y = breekAf(ctx, titel.toUpperCase(), m, 360, w - m * 2, 54)
+            ctx.fillRect(m, y + 14, 80, 3)
+            ctx.fillStyle = '#333'
+            ctx.font = '27px Helvetica, Arial, sans-serif'
+            breekAf(ctx, tekst, m, y + 56, w - m * 2, 42)
+          }
+          const tex = canvasTextuur(580, Math.round(580 * BAAN_H / BAAN_B), tekenBaan)
+          tex.anisotropy = 8
+          document.fonts?.ready.then(() => { tekenBaan(tex.image.getContext('2d'), tex.image.width, tex.image.height); tex.needsUpdate = true })
+          const voorkant = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 })
+
+          const baan = new THREE.Group()
+          const z = z0 + stap * (i + 0.5)
+          baan.position.set(BAAN_X + (i % 2 ? 0.12 : -0.12), BAAN_ONDER + BAAN_H / 2, z)
+          // Zigzag: om beurten een beetje naar links en naar rechts gedraaid
+          baan.rotation.y = -Math.PI / 2 + (i % 2 ? 0.32 : -0.32)
+          const paneel = new THREE.Mesh(new THREE.BoxGeometry(BAAN_B, BAAN_H, 0.012), [baanRand, baanRand, baanRand, baanRand, voorkant, voorkant.clone()])
+          paneel.castShadow = paneel.receiveShadow = true
+          baan.add(paneel)
+          // Twee staalkabels naar het plafond
+          const kabelL = plafondY - (BAAN_ONDER + BAAN_H)
+          for (const kx of [-BAAN_B / 2 + 0.06, BAAN_B / 2 - 0.06]) {
+            const kabel = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, kabelL, 6), kabelMat)
+            kabel.position.set(kx, BAAN_H / 2 + kabelL / 2, 0)
+            baan.add(kabel)
+          }
+          scene.add(baan)
+          voegObstakelToe(baan.position.x, z, 0.35, BAAN_B * 0.9)
+        })
+
+        // Titel op de muur achter de banen
+        const titelTex = canvasTextuur(2048, 256, (ctx, w, h) => {
+          ctx.clearRect(0, 0, w, h)
+          ctx.fillStyle = '#1a1a1a'
+          ctx.font = "120px 'marion-standard', Georgia, serif"
+          ctx.textBaseline = 'middle'
+          ctx.fillText('TIMELINE', 8, h / 2)
+        })
+        document.fonts?.ready.then(() => {
+          const ctx = titelTex.image.getContext('2d'), w = titelTex.image.width, h = titelTex.image.height
+          ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#1a1a1a'
+          ctx.font = "120px 'marion-standard', Georgia, serif"; ctx.textBaseline = 'middle'
+          ctx.fillText('TIMELINE', 8, h / 2)
+          titelTex.needsUpdate = true
+        })
+        const titel = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.5), new THREE.MeshBasicMaterial({ map: titelTex, transparent: true, toneMapped: false }))
+        const tp = opMuur('oost', z0 + 2.05, BAAN_ONDER + BAAN_H + 0.35, 0.003)
+        titel.position.copy(tp.p)
+        titel.rotation.y = tp.ry
+        scene.add(titel)
+
+        // Spots op de banen
+        for (const f of [0.17, 0.5, 0.83]) {
+          const z = z0 + (z1 - z0) * f
+          spotOp('oost', z, new THREE.Vector3(BAAN_X, 1.5, z))
+        }
+      }
+
+      const uitgang = new THREE.Group()
+      const nisMat = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.BackSide, toneMapped: false })
+      const nis = new THREE.Mesh(new THREE.BoxGeometry(0.9, DEURHOOGTE, DEUR * 2), nisMat)
+      nis.position.set(ZAAL.maxX + 0.5, DEURHOOGTE / 2, UITGANG_Z)
+      uitgang.add(nis)
+      scene.add(uitgang)
+      // Je kunt de opening in, maar niet door of naast de nis
+      voegObstakelToe(ZAAL.maxX + 0.8, UITGANG_Z, 0.3, DEUR * 2 + 0.4)
+      voegObstakelToe(ZAAL.maxX + 0.5, UITGANG_Z - DEUR - 0.1, 0.9, 0.1)
+      voegObstakelToe(ZAAL.maxX + 0.5, UITGANG_Z + DEUR + 0.1, 0.9, 0.1)
+
+      // ---------------------------------------------------------------------
+      // Naam in de deuropening: kijk je naar de uitgang (het richtpunt erop), dan
+      // verschijnt in de opening wat het is. Geen bordje ernaast.
+      // ---------------------------------------------------------------------
+      const doorgangen = []
+      function doorgangNaam(tekst, kleur, positie, ry) {
+        // Vlak in de vorm van de opening: om op te 'mikken', en bij hover een
+        // grijze waas van 10% over de opening
+        const vlak = new THREE.Mesh(new THREE.PlaneGeometry(DEUR * 2 - 0.1, DEURHOOGTE), new THREE.MeshBasicMaterial({ color: '#808080', transparent: true, opacity: 0, depthWrite: false, toneMapped: false }))
+        // Het grijze vlak ligt precies tegen de muur, zodat het de opening niet overlapt
+        const naarMuur = new THREE.Vector3(0, 0, -0.065).applyAxisAngle(new THREE.Vector3(0, 1, 0), ry)
+        vlak.position.set(positie.x + naarMuur.x, DEURHOOGTE / 2, positie.z + naarMuur.z)
+        vlak.rotation.y = ry
+        scene.add(vlak)
+        // De naam zelf (Marion), als tekst op een doorzichtig vlak iets vóór de opening
+        const c = document.createElement('canvas')
+        c.width = 512; c.height = 160
+        const tex = new THREE.CanvasTexture(c)
+        tex.colorSpace = THREE.SRGBColorSpace
+        const teken = () => {
+          const ctx = c.getContext('2d')
+          ctx.clearRect(0, 0, c.width, c.height)
+          ctx.fillStyle = kleur
+          ctx.font = "96px 'marion-standard', Georgia, serif"
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText(tekst.toUpperCase(), 256, 84)
+          tex.needsUpdate = true
+        }
+        teken()
+        // Opnieuw tekenen zodra Marion geladen is
+        document.fonts?.ready.then(teken)
+        const naam = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.34), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }))
+        naam.position.set(positie.x, 1.45, positie.z)
+        naam.rotation.y = ry
+        scene.add(naam)
+        doorgangen.push({ vlak, naam })
+      }
+      // Witte nis, dus donkere letters
+      doorgangNaam('Exit', '#111', { x: ZAAL.maxX - 0.12, z: UITGANG_Z }, -Math.PI / 2)
+
+      const mikStraal = new THREE.Raycaster()
+      const midden = new THREE.Vector2(0, 0)
+      function updateDoorgangNamen(dt) {
+        mikStraal.setFromCamera(isTouch || !muisZichtbaar ? midden : muisNdc, camera)
+        const raak = mikStraal.intersectObjects(doorgangen.map(d => d.vlak))[0]
+        const meng = 1 - Math.exp(-dt / 0.15)
+        doorgangen.forEach(({ vlak, naam }) => {
+          const doel = actief && raak && raak.object === vlak && raak.distance < 9 ? 1 : 0
+          naam.material.opacity += (doel - naam.material.opacity) * meng
+          vlak.material.opacity += (doel * 0.1 - vlak.material.opacity) * meng
+        })
+      }
+
+      const uitgangMelding = document.getElementById('uitgang-melding')
+      let uitgangOpen = false
+      function vraagUitgang() {
+        if (uitgangOpen) return
+        uitgangOpen = true
+        if (muisActief) ontgrendel()
+        uitgangMelding.classList.add('zichtbaar')
+        startScherm.style.visibility = 'hidden'
+        document.getElementById('uitgang-nee').focus()
+      }
+      document.getElementById('uitgang-nee').addEventListener('click', () => {
+        uitgangMelding.classList.remove('zichtbaar')
+        startScherm.style.visibility = ''
+        // Een stapje terug de zaal in, zodat de vraag niet meteen opnieuw komt
+        camera.position.x = ZAAL.maxX - 1.4
+        uitgangOpen = false
+        if (isTouch) startScherm.classList.add('verborgen')
+      })
+
+      // ---------------------------------------------------------------------
+      // Video starten/stoppen
+      // ---------------------------------------------------------------------
+      let videoAan = false
+      // ---------------------------------------------------------------------
+      // Achtergrondmuziek + geluidsknop. De muziek wordt zachter als de video
+      // speelt. De keuze aan/uit wordt onthouden.
+      // ---------------------------------------------------------------------
+      const muziek = new Audio(encodeURI(MUZIEK_PAD))
+      muziek.loop = true
+      muziek.volume = MUZIEK_VOLUME
+      muziek.addEventListener('error', () => console.warn(`Muziek niet gevonden: ${MUZIEK_PAD}`))
+      // Geluid staat altijd aan (de geluidsknop is verborgen, dus geen oude keuze meer lezen)
+      let geluidAan = true
+      try { localStorage.removeItem('peek-geluid') } catch {}
+      const geluidKnop = document.getElementById('geluid-knop')
+      function toonGeluidKnop() {
+        geluidKnop.setAttribute('aria-pressed', String(geluidAan))
+        geluidKnop.setAttribute('aria-label', geluidAan ? 'Turn sound off' : 'Turn sound on')
+        geluidKnop.querySelector('span').textContent = geluidAan ? 'Sound on' : 'Sound off'
+      }
+      function pasGeluidToe() {
+        muziek.muted = !geluidAan
+        if (!naarVolledigScherm) video.muted = !geluidAan
+      }
+      function startMuziek() {
+        if (muziek.paused) muziek.play().catch(() => {})
+      }
+      geluidKnop.addEventListener('click', e => {
+        e.stopPropagation()
+        geluidAan = !geluidAan
+        try { localStorage.setItem('peek-geluid', geluidAan ? 'aan' : 'uit') } catch {}
+        toonGeluidKnop()
+        pasGeluidToe()
+        if (geluidAan) startMuziek()
+      })
+      toonGeluidKnop()
+      // Muziek zachtjes laten wegzakken als er iets anders speelt
+      function updateMuziekVolume() {
+        const doel = videoAan ? 0.04 : MUZIEK_VOLUME
+        muziek.volume += (doel - muziek.volume) * 0.05
+      }
+
+      function zetVideo(aan) {
+        if (aan === videoAan) return
+        videoAan = aan
+        if (aan) {
+          const toonVideo = () => {
+            if (!videoAan) { video.pause(); return }
+            scherm.material = new THREE.MeshBasicMaterial({ map: videoTex, toneMapped: false })
+          }
+          // Blokkeert de browser afspelen met geluid, start dan zonder geluid
+          video.play().then(toonVideo).catch(() => {
+            video.muted = true
+            video.play().then(toonVideo).catch(() => { videoAan = false })
+          })
+        } else {
+          video.pause()
+          toonStilstaandBeeld()
+        }
+      }
+      // ---------------------------------------------------------------------
+      // Besturing: toetsen, muis (pointer lock) en touch
+      // ---------------------------------------------------------------------
+      // Beginblik: iets naar links, zodat je de kolommen en de lichtkoepels ziet
+      const BEGIN_YAW = Math.PI / 2   // rug naar de uitgang: kijken naar de zaal (-x)
+      let yaw = BEGIN_YAW, pitch = 0, actief = false
+      const toetsen = {}
+      addEventListener('keydown', e => { toetsen[e.code] = true })
+      addEventListener('keyup', e => { toetsen[e.code] = false })
+
+      const canvas = renderer.domElement
+      // De muis blijft zichtbaar (geen pointer lock). 'muisActief' betekent: je bent
+      // in de zaal en kunt rondkijken door te slepen. We sturen zelf een
+      // 'pointerlockchange' zodat de bestaande logica gewoon blijft werken.
+      // Muis verborgen (pointer lock): muis bewegen = rondkijken.
+      // 'muisZichtbaar' blijft uit; de sleepstand staat klaar maar is niet in gebruik.
+      let muisActief = false
+      let muisZichtbaar = false
+      let wisselen = false
+      document.body.classList.toggle('muis-zichtbaar', muisZichtbaar)
+      function vergrendel() {
+        if (muisActief && (muisZichtbaar || document.pointerLockElement === canvas)) return
+        if (muisZichtbaar) { muisActief = true; document.dispatchEvent(new Event('pointerlockchange')); return }
+        // Zonder klik weigert de browser soms: dan vragen we één klik
+        try { canvas.requestPointerLock()?.catch?.(() => verder.classList.add('zichtbaar')) } catch { verder.classList.add('zichtbaar') }
+      }
+      function ontgrendel() {
+        if (document.pointerLockElement === canvas) { document.exitPointerLock(); return }
+        if (!muisActief) return
+        muisActief = false
+        document.dispatchEvent(new Event('pointerlockchange'))
+      }
+      // Echte pointer-lock-gebeurtenissen: deze luisteraar staat vóór de andere
+      document.addEventListener('pointerlockchange', e => {
+        if (!e.isTrusted) return
+        if (wisselen) { wisselen = false; e.stopImmediatePropagation(); return }
+        muisActief = document.pointerLockElement === canvas
+      })
+      // Laag na de video op volledig scherm: één klik en je kijkt weer rond
+      const verder = document.createElement('div')
+      verder.id = 'verder'
+      verder.innerHTML = '<span>Click to keep looking around</span>'
+      document.body.appendChild(verder)
+      verder.addEventListener('click', () => vergrendel())
+      // Het oog kijkt naar de muis: de pupil schuift in de richting van de muis,
+      // binnen de randen van het oog. Zacht nalopen voor een natuurlijke blik.
+      const pupillen = [...document.querySelectorAll('#start .pupil')]
+      const oogSvg = document.querySelector('#start .oog')
+      const KIJK_X = 15, KIJK_Y = 4   // maximale verschuiving in SVG-eenheden
+      let doelX = 0, doelY = 0, nuX = 0, nuY = 0, kijkFrame = null
+      function kijk() {
+        nuX += (doelX - nuX) * 0.15
+        nuY += (doelY - nuY) * 0.15
+        pupillen.forEach(c => { c.setAttribute('cx', 60 + nuX); c.setAttribute('cy', 35 + nuY) })
+        kijkFrame = Math.abs(doelX - nuX) + Math.abs(doelY - nuY) > 0.05 ? requestAnimationFrame(kijk) : null
+      }
+      startScherm.addEventListener('mousemove', e => {
+        if (bezigMetBinnengaan || aanHetRondkijken || startScherm.classList.contains('hint')) return
+        const r = oogSvg.getBoundingClientRect()
+        const dx = e.clientX - (r.left + r.width / 2)
+        const dy = e.clientY - (r.top + r.height / 2)
+        const afstand = Math.hypot(dx, dy) || 1
+        // Hoe verder de muis, hoe meer de pupil naar de rand gaat (vol bij ~ 1,5 × oogbreedte)
+        const kracht = Math.min(1, afstand / (r.width * 1.5))
+        doelX = (dx / afstand) * kracht * KIJK_X
+        doelY = (dy / afstand) * kracht * KIJK_Y
+        if (!kijkFrame) kijkFrame = requestAnimationFrame(kijk)
+      })
+      startScherm.addEventListener('mouseleave', () => {
+        if (aanHetRondkijken) return
+        doelX = doelY = 0
+        if (!kijkFrame) kijkFrame = requestAnimationFrame(kijk)
+      })
+
+      // Na 3 seconden zonder klik: het oog wordt heel groot, kijkt door de ruimte
+      // van links naar rechts, en daarna verschijnt 'Klik om te kijken'.
+      const WACHTTIJD = 3000       // ms voor het oog groot wordt
+      const RONDKIJK_DUUR = 3200   // ms om van links naar rechts te kijken
+      let aanHetRondkijken = false
+      let wachtTimer = null
+      function rondkijken() {
+        aanHetRondkijken = true
+        const begin = performance.now()
+        const zacht = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
+        const stap = nu => {
+          if (bezigMetBinnengaan) { aanHetRondkijken = false; return }
+          const t = Math.min(1, (nu - begin) / RONDKIJK_DUUR)
+          // eerst naar links, dan rustig helemaal naar rechts, dan terug naar het midden
+          let x
+          if (t < 0.2) x = -KIJK_X * zacht(t / 0.2)
+          else if (t < 0.8) x = -KIJK_X + 2 * KIJK_X * zacht((t - 0.2) / 0.6)
+          else x = KIJK_X * (1 - zacht((t - 0.8) / 0.2))
+          nuX = doelX = x
+          nuY = doelY = 0
+          pupillen.forEach(c => { c.setAttribute('cx', 60 + x); c.setAttribute('cy', 35) })
+          if (t < 1) requestAnimationFrame(stap)
+          else {
+            aanHetRondkijken = false
+            startScherm.classList.add('hint')
+            // Twee keer snel knipperen, daarna weer het gewone knipperen
+            startScherm.classList.add('dubbelknip')
+            setTimeout(() => startScherm.classList.remove('dubbelknip'), 750)
+          }
+        }
+        requestAnimationFrame(stap)
+      }
+      // Grootte van het grote oog: het hele oog past ruim in beeld (± 75% van de breedte).
+      // De oogvorm beslaat ~90% van de svg-breedte en ~67% van de svg-hoogte.
+      function berekenGrootOog() {
+        const b = oogSvg.clientWidth, h = oogSvg.clientHeight
+        if (!b || !h) return
+        const W = startScherm.clientWidth, H = startScherm.clientHeight
+        const groot = Math.min(W * 0.75 / (b * 0.9), H * 0.8 / (h * 0.67))
+        startScherm.style.setProperty('--oog-groot', groot.toFixed(3))
+        // Tekst in verhouding tot de pupil (diameter = 42/120 van de oogbreedte)
+        startScherm.style.setProperty('--hint-grootte', Math.max(12, Math.min(56, b * groot * 42 / 120 * 0.068)) + 'px')
+      }
+      addEventListener('resize', berekenGrootOog)
+      function startWachten() {
+        clearTimeout(wachtTimer)
+        startScherm.classList.remove('groot', 'hint', 'dubbelknip')
+        wachtTimer = setTimeout(() => {
+          if (bezigMetBinnengaan || startScherm.classList.contains('verborgen')) return
+          berekenGrootOog()
+          startScherm.classList.add('groot')
+          if (matchMedia('(prefers-reduced-motion: reduce)').matches) startScherm.classList.add('hint')
+          else setTimeout(rondkijken, 900)
+        }, WACHTTIJD)
+      }
+      startWachten()
+
+      // Ook met Enter of spatie op het oog binnengaan
+      startScherm.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startScherm.click() }
+      })
+      // Klik op het oog: inzoomen door de pupil, dan sta je in de kamer
+      let bezigMetBinnengaan = false
+      const zoomDuur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1100
+      startScherm.addEventListener('click', () => {
+        if (bezigMetBinnengaan) return
+        clearTimeout(wachtTimer)
+        aanHetRondkijken = false
+        // Pupil terug naar het midden, zodat we recht door de pupil inzoomen
+        doelX = doelY = nuX = nuY = 0
+        pupillen.forEach(c => { c.setAttribute('cx', 60); c.setAttribute('cy', 35) })
+        pasGeluidToe()
+        startMuziek()
+        bezigMetBinnengaan = true
+        // Vanuit de huidige grootte (groot of reusachtig) verder inzoomen
+        startScherm.classList.remove('groot', 'hint', 'dubbelknip')
+        startScherm.classList.add('binnengaan')
+        setTimeout(() => {
+          startScherm.classList.add('verborgen')
+          startScherm.classList.remove('binnengaan', 'groot', 'hint', 'dubbelknip')
+          bezigMetBinnengaan = false
+          if (resterend <= 0) toonTijdOp()
+          else toonUitleg()
+        }, zoomDuur)
+      })
+      document.addEventListener('pointerlockchange', () => {
+        actief = muisActief
+        if (actief) { verder.classList.remove('zichtbaar'); geluidTerug() }
+        // Bij de video op volledig scherm blijf je in de zaal
+        // Esc op volledig scherm laat ook de muis los: dan blijf je in de zaal, niet bij het oog
+        const rondVolledig = naarVolledigScherm || document.fullscreenElement || performance.now() - uitVolledigOp < 1500
+        if (!actief && rondVolledig && !isTouch) verder.classList.add('zichtbaar')
+        if (!actief && (rondVolledig || verder.classList.contains('zichtbaar'))) return
+        // Tijdens de zoom verbergt de animatie zelf het beginscherm
+        if (!bezigMetBinnengaan) startScherm.classList.toggle('verborgen', actief || eenMeldingOpen())
+        // Terug op het beginscherm: na 3 s weer groot worden en rondkijken
+        if (!actief && !bezigMetBinnengaan && !eenMeldingOpen()) startWachten()
+        // Bij volledig scherm loopt de video gewoon door
+        if (!actief && !naarVolledigScherm) {
+          zetVideo(false)
+          wasBijVideo = false
+        }
+      })
+      // Kruisje: de ruimte verlaten en terug naar het oog. Op de computer is de
+      // muis vergrendeld tijdens het rondlopen; daar werkt ook Esc.
+      document.getElementById('sluit-knop').addEventListener('click', e => {
+        e.stopPropagation()
+        if (muisActief) { ontgrendel(); return }
+        actief = false
+        startScherm.classList.remove('verborgen')
+        zetVideo(false)
+        wasBijVideo = false
+        startWachten()
+      })
+
+      // Esc in de zaal: de ruimte verlaten (niet tijdens volledig scherm of een venster)
+      addEventListener('keydown', e => {
+        if (e.key === 'Escape' && muisActief && muisZichtbaar && !document.fullscreenElement && !eenMeldingOpen()) ontgrendel()
+      })
+      // Muis verborgen: bewegen = rondkijken, klikken = waar het vizier staat
+      document.addEventListener('mousemove', e => {
+        if (document.pointerLockElement !== canvas) return
+        yaw -= e.movementX * 0.0022
+        pitch = Math.max(-1.4, Math.min(1.4, pitch - e.movementY * 0.0022))
+      })
+      canvas.addEventListener('click', () => { if (document.pointerLockElement === canvas) klikOp(new THREE.Vector2(0, 0)) })
+      // Waar de muis staat (voor het mikken op bankjes)
+      const muisNdc = new THREE.Vector2(0, 0)
+      canvas.addEventListener('pointermove', e => {
+        const r = canvas.getBoundingClientRect()
+        muisNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
+      })
+
+      // Klikken op het scherm of de uitgang (desktop: via het vizier in het midden)
+      const raycaster = new THREE.Raycaster()
+      // Klik op de tv: video op volledig scherm
+      let naarVolledigScherm = false
+      let uitVolledigOp = -Infinity   // moment waarop je volledig scherm verliet
+      let hintTimer = null
+      // Geluid terug aanzetten (na een klik of toets mag de browser dat weer)
+      function geluidTerug() {
+        if (!geluidAan) return
+        video.muted = false
+        muziek.muted = false
+        if (videoAan && video.paused) video.play().catch(() => {})
+        startMuziek()
+      }
+      ;['pointerdown', 'keydown'].forEach(type => addEventListener(type, geluidTerug))
+      // Klik op het grote scherm: terug in de zaal (meteen weer rondkijken)
+      videoVol.addEventListener('click', () => {
+        if (document.fullscreenElement !== videoVol) return
+        document.exitFullscreen().catch(() => {})
+        vergrendel()
+      })
+      // Hint even terug tonen als je de muis beweegt
+      videoVol.addEventListener('mousemove', () => {
+        if (document.fullscreenElement !== videoVol) return
+        videoVol.classList.remove('stil')
+        clearTimeout(hintTimer)
+        hintTimer = setTimeout(() => videoVol.classList.add('stil'), 2500)
+      })
+      function volledigScherm() {
+        zetVideo(true)
+        video.muted = !geluidAan
+        naarVolledigScherm = true
+        videoVol.classList.remove('stil')
+        clearTimeout(hintTimer)
+        hintTimer = setTimeout(() => videoVol.classList.add('stil'), 4000)
+        if (videoVol.requestFullscreen) videoVol.requestFullscreen().catch(() => { naarVolledigScherm = false })
+        else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen() // iPhone
+      }
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement) return
+        // Terug uit volledig scherm: video pauzeren tot je weer binnengaat
+        naarVolledigScherm = false
+        uitVolledigOp = performance.now()
+        // Terug naar het kleine scherm in de zaal, de video speelt met geluid verder
+        geluidTerug()
+        startScherm.classList.add('verborgen')
+        if (isTouch) actief = true
+        else vergrendel()
+      })
+
+      const mandMelding = document.getElementById('mand-melding')
+      const tijdOp = document.getElementById('tijd-op')
+      const eenMeldingOpen = () => mandMelding.open || tijdOp.open || uitleg.open
+
+      // ---------------------------------------------------------------------
+      // Uitleg vóór je begint: na het inzoomen door het oog verschijnt een
+      // venster met de echte toetsen. Met 'Start' ga je binnen (en start de
+      // timer). Op de computer vragen we pas dan de muisvergrendeling.
+      // ---------------------------------------------------------------------
+      const uitleg = document.getElementById('tutorial')
+      const toets = (t, extra = '') => `<span class="toets ${extra}">${t}</span>`
+      const muisIcoon = `<svg class="icoon" viewBox="0 0 52 72" aria-hidden="true"><rect x="6" y="4" width="40" height="64" rx="20" fill="#fff" stroke="#222" stroke-width="2.5"/><line x1="26" y1="4" x2="26" y2="30" stroke="#222" stroke-width="2"/><path d="M6 30h40" stroke="#222" stroke-width="2"/><rect x="23" y="12" width="6" height="10" rx="3" fill="#222"/></svg>`
+      const klikIcoon = `<svg class="icoon" viewBox="0 0 52 72" aria-hidden="true"><rect x="6" y="4" width="40" height="64" rx="20" fill="#fff" stroke="#222" stroke-width="2.5"/><path d="M6 30h20V4.5A20 20 0 0 0 6 24z" fill="#222"/><line x1="26" y1="4" x2="26" y2="30" stroke="#222" stroke-width="2"/><path d="M6 30h40" stroke="#222" stroke-width="2"/></svg>`
+      const pijlen = `<svg class="icoon breed" viewBox="0 0 72 72" aria-hidden="true"><path d="M8 36h56M8 36l9-8M8 36l9 8M64 36l-9-8M64 36l-9 8M36 8v56M36 8l-8 9M36 8l8 9M36 64l-8-9M36 64l8-9" fill="none" stroke="#222" stroke-width="2.5" stroke-linecap="round"/></svg>`
+      const joystickIcoon = `<svg class="icoon breed" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="32" fill="#f2f2f2" stroke="#222" stroke-width="2"/><circle cx="36" cy="36" r="13" fill="#222"/><path d="M36 9l-5 7h10zM36 63l-5-7h10zM9 36l7-5v10zM63 36l-7-5v10z" fill="#222"/></svg>`
+      const sleepIcoon = `<svg class="icoon breed" viewBox="0 0 72 72" aria-hidden="true"><path d="M8 36h56M8 36l8-7M8 36l8 7M64 36l-8-7M64 36l-8 7" fill="none" stroke="#222" stroke-width="2.5" stroke-linecap="round"/><circle cx="36" cy="36" r="9" fill="#fff" stroke="#222" stroke-width="2.5"/></svg>`
+      const tikIcoon = `<svg class="icoon breed" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="10" fill="#222"/><circle cx="36" cy="36" r="20" fill="none" stroke="#222" stroke-width="2" opacity=".5"/><circle cx="36" cy="36" r="30" fill="none" stroke="#222" stroke-width="2" opacity=".25"/></svg>`
+      const klokIcoon = `<svg class="icoon breed" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="38" r="28" fill="#fff" stroke="#222" stroke-width="2.5"/><path d="M36 38V20M36 38l12 8" stroke="#222" stroke-width="3" stroke-linecap="round"/><path d="M30 6h12" stroke="#222" stroke-width="3" stroke-linecap="round"/></svg>`
+      const UITLEG_STAPPEN = isTouch ? [
+        { titel: 'Walk', tekst: 'Push the joystick at the bottom left in the direction you want to walk.', beeld: joystickIcoon },
+        { titel: 'Look around', tekst: 'Drag your finger across the screen to look around.', beeld: sleepIcoon },
+        { titel: 'Explore', tekst: 'Tap a bench to sit down, the screen to watch the video, or the box on the table.', beeld: tikIcoon },
+        { titel: 'Leave', tekst: 'Tap the cross at the top right to leave the room.', beeld: toets('×', 'breed') },
+        { titel: '3 minutes', tekst: 'You have 3 minutes to look around. The time runs at the top of the screen.', beeld: klokIcoon },
+      ] : [
+        { titel: 'Walk', tekst: 'Walk forward, backward and sideways with Z Q S D or the arrow keys.', beeld: `<div class="toetsen">${toets('Z', 'boven')}${toets('Q')}${toets('S')}${toets('D')}</div><span class="of">or</span><div class="toetsen">${toets('↑', 'boven')}${toets('←')}${toets('↓')}${toets('→')}</div>` },
+        { titel: 'Look around', tekst: 'Move the mouse to look around. The dot in the middle shows where you are looking.', beeld: muisIcoon + pijlen },
+        { titel: 'Explore', tekst: 'Aim with the dot and click: on a bench to sit down, on the screen to watch the video, or on the box on the table.', beeld: klikIcoon },
+        { titel: 'Leave', tekst: 'Press Esc to leave the room, or click the cross at the top right.', beeld: toets('Esc', 'breed') },
+        { titel: '3 minutes', tekst: 'You have 3 minutes to look around. The time runs at the top of the screen.', beeld: klokIcoon },
+      ]
+      let stap = 0
+      function toonStap() {
+        const s = UITLEG_STAPPEN[stap], laatste = stap === UITLEG_STAPPEN.length - 1
+        uitleg.innerHTML = `
+          <button type="button" class="overslaan" aria-label="Skip the tutorial">×</button>
+          <p class="stapnr">Step ${stap + 1} of ${UITLEG_STAPPEN.length}</p>
+          <h2 id="uitleg-titel">${s.titel}</h2>
+          <p class="tekst">${s.tekst}</p>
+          <div class="beeld" aria-hidden="true">${s.beeld}</div>
+          <div class="stippen">${UITLEG_STAPPEN.map((_, i) => `<span class="${i === stap ? 'nu' : ''}"></span>`).join('')}</div>
+          <div class="knoppen">
+            <button type="button" class="terug" ${stap === 0 ? 'hidden' : ''}>Previous</button>
+            <button type="button" class="verder" autofocus>${laatste ? 'Start' : 'Next'}</button>
+          </div>`
+        // Uitleg sluiten en meteen beginnen (via Start of het kruisje)
+        const begin = () => {
+          uitleg.close()
+          // De muisvergrendeling moet bij een klik gevraagd worden (browserregel)
+          if (isTouch) actief = true
+          else vergrendel()
+        }
+        uitleg.querySelector('.overslaan').addEventListener('click', begin)
+        uitleg.querySelector('.terug').addEventListener('click', () => { stap--; toonStap() })
+        uitleg.querySelector('.verder').addEventListener('click', () => {
+          if (!laatste) { stap++; toonStap(); return }
+          begin()
+        })
+        uitleg.querySelector('.verder').focus()
+      }
+      function toonUitleg() {
+        if (uitleg.open) return
+        stap = 0
+        toonStap()
+        uitleg.showModal()
+      }
+      function verbergUitleg() {
+        if (uitleg.open) uitleg.close()
+      }
+      // Esc in het uitlegvenster: terug naar het oog
+      uitleg.addEventListener('cancel', e => {
+        e.preventDefault()
+        uitleg.close()
+        startScherm.classList.remove('verborgen')
+        startWachten()
+      })
+
+      // ---------------------------------------------------------------------
+      // Timer: je hebt 3 minuten om rond te kijken. De tijd loopt alleen als je
+      // binnen bent. Daarna: tickets kopen om het echt te komen zien.
+      // ---------------------------------------------------------------------
+      const KIJKTIJD = 180   // seconden
+      let resterend = KIJKTIJD
+      const timerEl = document.getElementById('timer')
+      const toonTijd = () => {
+        const t = Math.ceil(Math.max(0, resterend))
+        timerEl.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
+        timerEl.classList.toggle('bijna', t <= 30)
+      }
+      function updateTimer(dt) {
+        if (!actief || eenMeldingOpen() || resterend <= 0) return
+        const oud = Math.ceil(resterend)
+        resterend -= dt
+        if (Math.ceil(resterend) !== oud) toonTijd()
+        if (resterend <= 0) toonTijdOp()
+      }
+      function toonTijdOp() {
+        if (tijdOp.open) return
+        verbergUitleg()
+        tijdOp.showModal()
+        actief = false
+        snelheidX = snelheidZ = 0
+        for (const toets of Object.keys(toetsen)) toetsen[toets] = false
+        joy.x = joy.y = 0
+        if (zitIk) staOp()
+        zetVideo(false)
+        if (muisActief) ontgrendel()
+      }
+      // Sluiten: terug naar het oog op het beginscherm
+      tijdOp.addEventListener('close', () => {
+        startScherm.classList.remove('verborgen')
+        startWachten()
+      })
+      function toonMandMelding() {
+        if (mandMelding.open) return
+        mandMelding.showModal()
+        actief = false
+        snelheidX = snelheidZ = 0
+        for (const toets of Object.keys(toetsen)) toetsen[toets] = false
+        joy.x = joy.y = 0
+        if (muisActief) ontgrendel()
+      }
+      mandMelding.addEventListener('close', () => {
+        if (isTouch) actief = true
+        else vergrendel()
+      })
+
+      function klikOp(ndc) {
+        raycaster.setFromCamera(ndc, camera)
+        const raak = raycaster.intersectObjects([scherm, uitgang, ...(mand.visible ? [mand] : []), ...zitjes.map(z => z.obj)], true)[0]
+        const zitje = raak && zitjes.find(z => z.obj === raak.object || z.obj.getObjectById(raak.object.id))
+        // Zit je al? Elke klik laat je weer opstaan
+        if (zitIk) { staOp(); return }
+        if (!raak || raak.distance > 8) return
+        if (zitje) { if (raak.distance < 4) gaZitten(zitje) }
+        else if (mand.getObjectById(raak.object.id)) toonMandMelding()
+        else if (raak.object === scherm) volledigScherm()
+        else vraagUitgang()
+      }
+
+      // Joystick om te lopen
+      const joystick = document.getElementById('joystick')
+      const knop = document.getElementById('joystick-knop')
+      const joy = { x: 0, y: 0, id: null }
+      function joyBeweeg(e) {
+        const r = joystick.getBoundingClientRect()
+        let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2)
+        const max = r.width / 2, len = Math.hypot(dx, dy)
+        if (len > max) { dx *= max / len; dy *= max / len }
+        joy.x = dx / max; joy.y = dy / max
+        knop.style.transform = `translate(${dx}px, ${dy}px)`
+      }
+      joystick.addEventListener('pointerdown', e => { joy.id = e.pointerId; joystick.setPointerCapture(e.pointerId); joyBeweeg(e) })
+      joystick.addEventListener('pointermove', e => { if (e.pointerId === joy.id) joyBeweeg(e) })
+      const joyLos = e => { if (e.pointerId !== joy.id) return; joy.id = null; joy.x = joy.y = 0; knop.style.transform = '' }
+      joystick.addEventListener('pointerup', joyLos)
+      joystick.addEventListener('pointercancel', joyLos)
+
+      // Slepen om rond te kijken, kort tikken om te klikken
+      const sleep = { id: null, x: 0, y: 0, start: 0, afstand: 0 }
+      canvas.addEventListener('pointerdown', e => {
+        if ((!isTouch && !(muisActief && muisZichtbaar)) || sleep.id !== null) return
+        if (!isTouch) { canvas.setPointerCapture(e.pointerId); canvas.classList.add('sleept') }
+        Object.assign(sleep, { id: e.pointerId, x: e.clientX, y: e.clientY, start: performance.now(), afstand: 0 })
+      })
+      canvas.addEventListener('pointermove', e => {
+        if (e.pointerId !== sleep.id) return
+        const dx = e.clientX - sleep.x, dy = e.clientY - sleep.y
+        sleep.x = e.clientX; sleep.y = e.clientY
+        sleep.afstand += Math.abs(dx) + Math.abs(dy)
+        yaw -= dx * 0.005
+        pitch = Math.max(-1.4, Math.min(1.4, pitch - dy * 0.005))
+      })
+      const sleepLos = e => {
+        if (e.pointerId !== sleep.id) return
+        sleep.id = null
+        canvas.classList.remove('sleept')
+        if (sleep.afstand < 10 && performance.now() - sleep.start < 300) {
+          const r = canvas.getBoundingClientRect()
+          klikOp(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1))
+        }
+      }
+      canvas.addEventListener('pointerup', sleepLos)
+      canvas.addEventListener('pointercancel', sleepLos)
+
+      // ---------------------------------------------------------------------
+      // Bewegen met botsingen
+      // ---------------------------------------------------------------------
+      function botst(x, z) {
+        // De muren staan zelf in de lijst met obstakels
+        return obstakels.some(o => x > o.minX - SPELER_STRAAL && x < o.maxX + SPELER_STRAAL && z > o.minZ - SPELER_STRAAL && z < o.maxZ + SPELER_STRAAL)
+      }
+
+      // Vloeiend lopen: de snelheid groeit en zakt geleidelijk (versnellen en
+      // uitlopen), in plaats van meteen vol te starten of abrupt te stoppen.
+      // ---------------------------------------------------------------------
+      // Zitten: klik op een kussen en je zakt erop neer, met de blik naar het
+      // scherm. Klik opnieuw, of loop weg (WASD/joystick), om op te staan.
+      // ---------------------------------------------------------------------
+      const ZIT_OOG = 0.8            // ooghoogte boven de zitplek
+      let zitIk = null               // het zitje waar je nu op zit
+      let staPlek = null             // waar je stond voor je ging zitten
+      let camDoel = null             // waar de camera naartoe glijdt (zitten/opstaan)
+      function gaZitten(zitje) {
+        if (zitIk === zitje) return
+        if (!zitIk) staPlek = camera.position.clone()
+        zitIk = zitje
+        camDoel = zitje.zit.clone().setY(zitje.zit.y + ZIT_OOG)
+        snelheidX = snelheidZ = 0
+        // Naar het scherm kijken, op de kortste weg rond
+        // Kijk naar het scherm, of naar het eigen kijkpunt van dit zitje
+        const kijkNaar = zitje.kijk || schermPos
+        const doelYaw = Math.atan2(-(kijkNaar.x - camDoel.x), -(kijkNaar.z - camDoel.z))
+        yaw = kijkYaw + Math.atan2(Math.sin(doelYaw - kijkYaw), Math.cos(doelYaw - kijkYaw))
+        pitch = Math.atan2(kijkNaar.y - camDoel.y, Math.hypot(kijkNaar.x - camDoel.x, kijkNaar.z - camDoel.z)) * 0.6
+      }
+      function staOp() {
+        if (!zitIk) return
+        zitIk = null
+        camDoel = staPlek ? staPlek.setY(OOGHOOGTE) : camera.position.clone().setY(OOGHOOGTE)
+      }
+      // Camera zacht naar de zit- of staplek laten glijden
+      function updateZitten(dt) {
+        if (!camDoel) return
+        camera.position.lerp(camDoel, 1 - Math.exp(-dt / 0.2))
+        if (camera.position.distanceTo(camDoel) < 0.005) { camera.position.copy(camDoel); camDoel = null }
+      }
+      const wilLopen = () => toetsen.KeyW || toetsen.KeyA || toetsen.KeyS || toetsen.KeyD
+        || toetsen.ArrowUp || toetsen.ArrowDown || toetsen.ArrowLeft || toetsen.ArrowRight
+        || Math.hypot(joy.x, joy.y) > 0.3
+
+      const LOOP_SOEPEL = 0.22   // seconden om ~63% van de doelsnelheid te halen
+      let snelheidX = 0, snelheidZ = 0
+      function beweeg(dt) {
+        if (zitIk) { if (wilLopen()) staOp(); return }
+        // Tijdens het opstaan nog niet lopen
+        if (camDoel) return
+        let vooruit = 0, opzij = 0
+        if (toetsen.KeyW || toetsen.ArrowUp) vooruit += 1
+        if (toetsen.KeyS || toetsen.ArrowDown) vooruit -= 1
+        if (toetsen.KeyD || toetsen.ArrowRight) opzij += 1
+        if (toetsen.KeyA || toetsen.ArrowLeft) opzij -= 1
+        vooruit -= joy.y; opzij += joy.x
+        const len = Math.hypot(vooruit, opzij)
+        if (len < 0.05) { vooruit = opzij = 0 } else if (len > 1) { vooruit /= len; opzij /= len }
+        // Gewenste snelheid in de wereld (gebaseerd op de kijkrichting)
+        const sin = Math.sin(kijkYaw), cos = Math.cos(kijkYaw)
+        const doelX = (-sin * vooruit + cos * opzij) * LOOPSNELHEID
+        const doelZ = (-cos * vooruit - sin * opzij) * LOOPSNELHEID
+        const meng = 1 - Math.exp(-dt / LOOP_SOEPEL)
+        snelheidX += (doelX - snelheidX) * meng
+        snelheidZ += (doelZ - snelheidZ) * meng
+        if (Math.abs(snelheidX) + Math.abs(snelheidZ) < 0.001) { snelheidX = snelheidZ = 0; return }
+        const dx = snelheidX * dt, dz = snelheidZ * dt
+        // Per as testen, zodat je langs muren kunt glijden; tegen een muur valt die snelheid weg
+        if (!botst(camera.position.x + dx, camera.position.z)) camera.position.x += dx
+        else snelheidX = 0
+        if (!botst(camera.position.x, camera.position.z + dz)) camera.position.z += dz
+        else snelheidZ = 0
+      }
+
+      // Gordijn: gaat zachtjes open als je er vlakbij bent of erdoor loopt
+      // Werkt als een veer: de stof schiet een klein beetje door en zwiept na.
+      let gordijnOpen = 0, gordijnSnelheid = 0, gordijnGolving = 0, gordijnTijd = 0, laatsteVorm = -1
+      function updateGordijn(dt) {
+        const p = camera.position
+        const dx = Math.abs(p.x - GORDIJN_X), dz = Math.abs(p.z)
+        // Begint al open te gaan vanaf ~4 m, zodat je de beweging ziet aankomen
+        const doel = actief && dz < 3 ? THREE.MathUtils.clamp(1 - (dx - 0.8) / 3.2, 0, 1) : 0
+        // Veer: stijfheid 14, demping 5 (iets onder kritisch, dus een kleine overshoot)
+        gordijnSnelheid += ((doel - gordijnOpen) * 14 - gordijnSnelheid * 5) * dt
+        gordijnOpen = THREE.MathUtils.clamp(gordijnOpen + gordijnSnelheid * dt, -0.05, 1.08)
+        // Hoe sneller het gordijn beweegt, hoe meer het golft; daarna dempt het uit
+        gordijnGolving = Math.max(gordijnGolving * Math.exp(-dt / 0.9), Math.min(1, Math.abs(gordijnSnelheid) * 0.9))
+        gordijnTijd += dt
+        // Alleen herberekenen als het gordijn echt beweegt: dat is zwaar, en
+        // elk beeldje rekenen maakte het lopen schokkerig
+        if (Math.abs(gordijnOpen - laatsteVorm) > 0.004 || gordijnGolving > 0.03) {
+          gordijnDelen.forEach(vorm => vorm(gordijnOpen, gordijnTijd, gordijnGolving))
+          laatsteVorm = gordijnOpen
+        }
+      }
+
+      // Vloeiend rondkijken: de camera volgt de muis met een heel korte vertraging
+      const KIJK_SOEPEL = 0.06   // seconden
+      let kijkYaw = BEGIN_YAW, kijkPitch = 0
+      function draaiCamera(dt) {
+        const meng = 1 - Math.exp(-dt / KIJK_SOEPEL)
+        kijkYaw += (yaw - kijkYaw) * meng
+        kijkPitch += (pitch - kijkPitch) * meng
+        camera.rotation.set(kijkPitch, kijkYaw, 0)
+      }
+
+      // ---------------------------------------------------------------------
+      // Nabijheid: de video start vanzelf als je dichtbij komt
+      // ---------------------------------------------------------------------
+      let wasBijVideo = false
+      function controleerNabijheid() {
+        const p = camera.position
+        // De video speelt zodra je onder het lage plafond voor het scherm staat
+        const bijVideo = p.x < LIGGER_X - 0.4
+        // In de deuropening van de uitgang gestapt?
+        if (p.x > ZAAL.maxX - 0.35 && Math.abs(p.z - UITGANG_Z) < DEUR) vraagUitgang()
+        if (bijVideo !== wasBijVideo) { zetVideo(bijVideo); wasBijVideo = bijVideo }
+
+        // Mik je op een kussen in de buurt? Dan tonen we dat je kunt gaan zitten
+        mikStraal.setFromCamera(midden, camera)
+        const opZitje = !isTouch && !zitIk && mikStraal.intersectObjects(zitjes.map(z => z.obj), true).some(r => r.distance < 4)
+        let tekst = ''
+        if (zitIk) tekst = isTouch ? 'Tap to stand up' : 'Click or walk to stand up'
+        else if (opZitje) tekst = 'Click to sit down'
+        else if (isTouch && bijVideo) tekst = 'Tap a bench to sit down'
+        else if (bijVideo) tekst = `▶ ${VIDEO_TITEL} · ${isTouch ? 'tap' : 'click'} the screen for full screen`
+        hint.textContent = tekst
+        hint.classList.toggle('zichtbaar', actief && tekst !== '')
+      }
+
+      // ---------------------------------------------------------------------
+      // Animatielus
+      // ---------------------------------------------------------------------
+      // Alleen in dev-modus: haakje voor tests om de camera te verplaatsen
+      if (import.meta.env?.DEV) window.__peek = { camera, mand, zitjes, isZittend: () => !!zitIk, zetTijd: t => { resterend = t }, kijk: (y, p = 0) => { yaw = kijkYaw = y; pitch = kijkPitch = p } }
+
+      const klok = new THREE.Clock()
+      renderer.setAnimationLoop(nu => {
+        updateMuziekVolume()
+        updateSchermLicht(nu)
+        const dt = Math.min(klok.getDelta(), 0.1)
+        updateTimer(dt)
+        if (actief && !eenMeldingOpen()) {
+          beweeg(dt)
+          controleerNabijheid()
+        }
+        updateZitten(dt)
+        updateGordijn(dt)
+        draaiCamera(dt)
+        updateDoorgangNamen(dt)
+        // Mand gaat open zodra je erop mikt (computer) of ervoor staat (gsm)
+        if (!mand.visible) mandDoel = 0
+        else if (isTouch) mandDoel = actief && camera.position.distanceTo(mand.getWorldPosition(new THREE.Vector3())) < 2 ? 1 : 0
+        else {
+          mikStraal.setFromCamera(midden, camera)
+          const raak = mikStraal.intersectObject(mand, true)[0]
+          mandDoel = actief && raak && raak.distance < 6 ? 1 : 0
+        }
+        updateMand(dt, klok.elapsedTime)
+        renderer.render(scene, camera)
+      })
+    </script>
+  </body>
+</html>
